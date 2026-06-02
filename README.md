@@ -31,6 +31,46 @@ http://127.0.0.1:8765
 python -m unittest discover
 ```
 
+## Como publicar no Cloudflare Pages
+
+Essa versao usa o front estatico em `finance_app/web/static`, Cloudflare Pages Functions em `functions/api` e Supabase como banco/autenticacao.
+
+Antes do primeiro deploy, abra o SQL Editor do Supabase e rode o arquivo:
+
+```text
+supabase/schema.sql
+```
+
+No Cloudflare Pages, use:
+
+```text
+Production branch: main
+Framework preset: None
+Build command: deixe vazio
+Build output directory: finance_app/web/static
+```
+
+Configure estas variaveis de ambiente no Cloudflare:
+
+```text
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-chave-publica
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
+LEGACY_OWNER_EMAIL=gamoxkun@gmail.com
+ADMIN_EMAIL=gamoxkun@gmail.com
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` e secreta. Ela fica em Supabase > Project Settings > API Keys e deve ir apenas no Cloudflare, nunca no JavaScript do front.
+
+Depois do deploy, atualize em Supabase > Authentication > URL Configuration:
+
+```text
+Site URL: https://seu-site.pages.dev
+Redirect URLs:
+https://seu-site.pages.dev/
+https://seu-site.pages.dev/*
+```
+
 ## Como rodar a versao desktop moderna
 
 Essa versao usa FastAPI no Python, React no visual e Tauri para abrir como app de PC.
@@ -101,7 +141,8 @@ npm run desktop:dev
 
 ## Uso rapido
 
-- No Netlify, acesse com `gamoxkun` / `ri1998`.
+- No app web publicado, o login usa email/senha ou Google pelo Supabase.
+- A conta com email igual a `ADMIN_EMAIL` ganha a aba Admin automaticamente.
 - Novas contas podem ser criadas pela tela de login; cada usuario comeca com categorias padrao e planilha sem lancamentos.
 - Use o formulario da esquerda para lancar gastos, parcelas e recebidos.
 - Use Nova ao lado de Categoria para criar uma categoria personalizada.

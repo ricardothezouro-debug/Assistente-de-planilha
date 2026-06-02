@@ -6,5 +6,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["netlify/functions/**/*", "db/**/*", "drizzle.config.ts"]
+  "include": ["functions/**/*", "netlify/functions/**/*", "db/**/*", "drizzle.config.ts"]
 }
