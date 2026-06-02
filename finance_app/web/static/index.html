@@ -24,20 +24,25 @@
 
         <form class="auth-form active" id="login-form">
           <label>
-            Usuario
-            <input id="login-username" type="text" autocomplete="username" required />
+            Email
+            <input id="login-username" type="email" autocomplete="email" required />
           </label>
           <label>
             Senha
             <input id="login-password" type="password" autocomplete="current-password" required />
           </label>
           <button class="button primary" type="submit">Entrar</button>
+          <button class="button ghost" id="forgot-password-button" type="button">Esqueci minha senha</button>
         </form>
 
         <form class="auth-form" id="register-form">
           <label>
+            Email
+            <input id="register-email" type="email" autocomplete="email" required />
+          </label>
+          <label>
             Usuario
-            <input id="register-username" type="text" autocomplete="username" required />
+            <input id="register-username" type="text" autocomplete="username" placeholder="Ex: gamoxkun" />
           </label>
           <label>
             Senha
@@ -45,6 +50,9 @@
           </label>
           <button class="button primary" type="submit">Criar conta</button>
         </form>
+
+        <div class="auth-separator"><span>ou</span></div>
+        <button class="button ghost" id="google-login-button" type="button">Entrar com Google</button>
       </div>
     </section>
 
@@ -328,6 +336,7 @@
       </form>
     </dialog>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/app.js"></script>
   </body>
 </html>

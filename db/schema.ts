@@ -3,10 +3,13 @@ import { pgTable, serial, text, integer, timestamp, index, uniqueIndex, primaryK
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
+  supabaseUserId: text("supabase_user_id"),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("idx_users_supabase_user_id").on(table.supabaseUserId),
+]);
 
 export const settings = pgTable(
   "settings",

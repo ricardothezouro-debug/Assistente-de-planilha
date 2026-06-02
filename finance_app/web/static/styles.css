@@ -87,6 +87,24 @@ select {
   display: grid;
 }
 
+.auth-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.auth-separator::before,
+.auth-separator::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);

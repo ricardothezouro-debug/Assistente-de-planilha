@@ -7,15 +7,15 @@ const state = {
 };
 
 const els = {};
+const SUPABASE_URL = "https://yrarkwxaivsqsnpgabmh.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_RYJDWtHHQKmb9bIrrw9IIA_wY3u8GiD";
+let supabaseClient = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+  supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) ?? null;
   bindElements();
   bindEvents();
-  restoreSession();
-  renderAuthState();
-  if (state.session) {
-    loadState();
-  }
+  bootSession();
 });
 
 function bindElements() {
@@ -29,6 +29,9 @@ function bindElements() {
     "register-form",
     "login-username",
     "login-password",
+    "forgot-password-button",
+    "google-login-button",
+    "register-email",
     "register-username",
     "register-password",
     "current-user",
@@ -84,6 +87,8 @@ function bindEvents() {
   els["register-tab"].addEventListener("click", () => switchAuthMode("register"));
   els["login-form"].addEventListener("submit", submitLogin);
   els["register-form"].addEventListener("submit", submitRegister);
+  els["forgot-password-button"].addEventListener("click", resetPassword);
+  els["google-login-button"].addEventListener("click", loginWithGoogle);
   els["logout-button"].addEventListener("click", logout);
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -138,30 +143,99 @@ async function loadState() {
 
 async function submitLogin(event) {
   event.preventDefault();
-  await authenticate("/api/auth/login", {
-    username: els["login-username"].value,
-    password: els["login-password"].value,
-  });
-}
-
-async function submitRegister(event) {
-  event.preventDefault();
-  await authenticate("/api/auth/register", {
-    username: els["register-username"].value,
-    password: els["register-password"].value,
-  });
-}
-
-async function authenticate(path, payload) {
   try {
-    const session = await readJson(await fetch(path, postOptions(payload, false)));
-    saveSession(session);
+    const client = requireSupabase();
+    const { data, error } = await client.auth.signInWithPassword({
+      email: els["login-username"].value.trim(),
+      password: els["login-password"].value,
+    });
+    if (error) throw error;
+    saveSupabaseSession(data.session, data.user);
     renderAuthState();
     showToast("Sessao iniciada.");
     await loadState();
   } catch (error) {
     showToast(error.message || "Nao foi possivel entrar.");
   }
+}
+
+async function submitRegister(event) {
+  event.preventDefault();
+  try {
+    const client = requireSupabase();
+    const username = els["register-username"].value.trim();
+    const { data, error } = await client.auth.signUp({
+      email: els["register-email"].value.trim(),
+      password: els["register-password"].value,
+      options: {
+        data: username ? { username } : {},
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    if (!data.session) {
+      showToast("Conta criada. Confira seu email para confirmar o acesso.");
+      return;
+    }
+    saveSupabaseSession(data.session, data.user);
+    renderAuthState();
+    showToast("Conta criada.");
+    await loadState();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel criar a conta.");
+  }
+}
+
+async function loginWithGoogle() {
+  try {
+    const client = requireSupabase();
+    const { error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel iniciar o Google Login.");
+  }
+}
+
+async function resetPassword() {
+  const email = els["login-username"].value.trim();
+  if (!email) {
+    showToast("Informe seu email primeiro.");
+    return;
+  }
+
+  try {
+    const client = requireSupabase();
+    const { error } = await client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw error;
+    showToast("Enviamos o link de redefinicao para seu email.");
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel enviar o email.");
+  }
+}
+
+async function bootSession() {
+  await restoreSupabaseSession();
+  if (!state.session) {
+    restoreSession();
+  }
+  renderAuthState();
+  if (state.session) {
+    await loadState();
+  }
+}
+
+async function restoreSupabaseSession() {
+  if (!supabaseClient) return;
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error || !data.session) return;
+  saveSupabaseSession(data.session, data.session.user);
 }
 
 function restoreSession() {
@@ -178,6 +252,19 @@ function saveSession(session) {
   localStorage.setItem("financeiro-session", JSON.stringify(session));
 }
 
+function saveSupabaseSession(session, user) {
+  if (!session?.access_token || !user) return;
+  saveSession({
+    provider: "supabase",
+    token: session.access_token,
+    authEmail: user.email,
+    user: {
+      username: user.user_metadata?.username || user.email || "Usuario",
+      displayName: user.user_metadata?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || null,
+    },
+  });
+}
+
 function updateSessionUser(user) {
   if (!state.session) return;
   state.session = {
@@ -188,7 +275,10 @@ function updateSessionUser(user) {
   renderAuthState();
 }
 
-function logout() {
+async function logout() {
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
   state.session = null;
   state.data = null;
   localStorage.removeItem("financeiro-session");
@@ -525,9 +615,20 @@ async function submitPassword(event) {
   }
 
   try {
-    await readJson(
-      await fetch("/api/profile/password", postOptions({ currentPassword, newPassword }))
-    );
+    const client = requireSupabase();
+    if (currentPassword && state.session?.authEmail) {
+      const { error: loginError } = await client.auth.signInWithPassword({
+        email: state.session.authEmail,
+        password: currentPassword,
+      });
+      if (loginError) throw new Error("Senha atual invalida.");
+    }
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    const { data } = await client.auth.getSession();
+    if (data.session) {
+      saveSupabaseSession(data.session, data.session.user);
+    }
     els["password-form"].reset();
     showToast("Senha alterada.");
   } catch (error) {
@@ -740,6 +841,13 @@ async function readJson(response) {
 
 function authHeaders() {
   return state.session?.token ? { Authorization: `Bearer ${state.session.token}` } : {};
+}
+
+function requireSupabase() {
+  if (!supabaseClient) {
+    throw new Error("Supabase nao foi carregado.");
+  }
+  return supabaseClient;
 }
 
 function dateInputToUserDate(value) {
