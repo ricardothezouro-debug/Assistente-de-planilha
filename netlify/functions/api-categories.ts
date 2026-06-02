@@ -1,7 +1,8 @@
 import type { Config } from "@netlify/functions";
-import { sql } from "drizzle-orm";
+import { and, sql, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { categories } from "../../db/schema.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -9,6 +10,7 @@ export default async (req: Request): Promise<Response> => {
   }
 
   try {
+    const user = await getUserFromRequest(req);
     const body = await req.json();
     const name = String(body.name ?? "")
       .trim()
@@ -22,14 +24,14 @@ export default async (req: Request): Promise<Response> => {
     const existing = await db
       .select({ name: categories.name })
       .from(categories)
-      .where(sql`lower(${categories.name}) = lower(${name})`)
+      .where(and(eq(categories.userId, user.id), sql`lower(${categories.name}) = lower(${name})`))
       .limit(1);
 
     if (existing.length > 0) {
       return Response.json({ category: existing[0].name }, { status: 201 });
     }
 
-    await db.insert(categories).values({ name });
+    await db.insert(categories).values({ userId: user.id, name });
     return Response.json({ category: name }, { status: 201 });
   } catch (err) {
     console.error("api-categories error:", err);

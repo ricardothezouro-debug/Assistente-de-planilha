@@ -1,6 +1,7 @@
 import type { Config } from "@netlify/functions";
 import { parseMoneyCents } from "./lib/money.js";
 import { setInitialInvestedCents } from "./lib/finance.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -8,6 +9,7 @@ export default async (req: Request): Promise<Response> => {
   }
 
   try {
+    const user = await getUserFromRequest(req);
     const body = await req.json();
     const cents = parseMoneyCents(String(body.amount ?? ""));
 
@@ -18,7 +20,7 @@ export default async (req: Request): Promise<Response> => {
       );
     }
 
-    await setInitialInvestedCents(cents);
+    await setInitialInvestedCents(user.id, cents);
     return Response.json({ ok: true });
   } catch (err) {
     console.error("api-initial-invested error:", err);

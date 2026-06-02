@@ -2,6 +2,7 @@ import type { Config } from "@netlify/functions";
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { entries, occurrences } from "../../db/schema.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -9,6 +10,7 @@ export default async (req: Request): Promise<Response> => {
   }
 
   try {
+    const user = await getUserFromRequest(req);
     const body = await req.json();
     // Accept both snake_case (desktop app) and camelCase (web app)
     const occurrenceId =
@@ -30,7 +32,7 @@ export default async (req: Request): Promise<Response> => {
         dueDate: occurrences.dueDate,
       })
       .from(occurrences)
-      .where(eq(occurrences.id, occurrenceId))
+      .where(and(eq(occurrences.id, occurrenceId), eq(occurrences.userId, user.id)))
       .limit(1);
 
     if (!row) {
@@ -38,16 +40,24 @@ export default async (req: Request): Promise<Response> => {
     }
 
     if (scope === "single") {
-      await db.delete(occurrences).where(eq(occurrences.id, occurrenceId));
+      await db
+        .delete(occurrences)
+        .where(and(eq(occurrences.id, occurrenceId), eq(occurrences.userId, user.id)));
     } else if (scope === "from") {
       await db
         .delete(occurrences)
         .where(
-          and(eq(occurrences.entryId, row.entryId), gte(occurrences.dueDate, row.dueDate))
+          and(
+            eq(occurrences.userId, user.id),
+            eq(occurrences.entryId, row.entryId),
+            gte(occurrences.dueDate, row.dueDate)
+          )
         );
     } else {
       // Delete the parent entry; cascade removes all occurrences
-      await db.delete(entries).where(eq(entries.id, row.entryId));
+      await db
+        .delete(entries)
+        .where(and(eq(entries.id, row.entryId), eq(entries.userId, user.id)));
     }
 
     return Response.json({ ok: true });

@@ -3,6 +3,7 @@ const state = {
   year: 2026,
   data: null,
   view: "dashboard",
+  session: null,
 };
 
 const els = {};
@@ -10,12 +11,28 @@ const els = {};
 document.addEventListener("DOMContentLoaded", () => {
   bindElements();
   bindEvents();
-  loadState();
+  restoreSession();
+  renderAuthState();
+  if (state.session) {
+    loadState();
+  }
 });
 
 function bindElements() {
   const ids = [
     "page-title",
+    "auth-shell",
+    "app-shell",
+    "login-tab",
+    "register-tab",
+    "login-form",
+    "register-form",
+    "login-username",
+    "login-password",
+    "register-username",
+    "register-password",
+    "current-user",
+    "logout-button",
     "month-filter",
     "year-filter",
     "refresh-button",
@@ -55,6 +72,11 @@ function bindElements() {
 }
 
 function bindEvents() {
+  els["login-tab"].addEventListener("click", () => switchAuthMode("login"));
+  els["register-tab"].addEventListener("click", () => switchAuthMode("register"));
+  els["login-form"].addEventListener("submit", submitLogin);
+  els["register-form"].addEventListener("submit", submitRegister);
+  els["logout-button"].addEventListener("click", logout);
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
@@ -79,8 +101,15 @@ function bindEvents() {
 }
 
 async function loadState() {
+  if (!state.session) {
+    renderAuthState();
+    return;
+  }
+
   try {
-    const response = await fetch(`/api/state?year=${state.year}&month=${state.month}`);
+    const response = await fetch(`/api/state?year=${state.year}&month=${state.month}`, {
+      headers: authHeaders(),
+    });
     const data = await readJson(response);
     state.data = data;
     state.year = data.selectedYear;
@@ -89,6 +118,72 @@ async function loadState() {
   } catch (error) {
     showToast(error.message || "Nao foi possivel carregar os dados.");
   }
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  await authenticate("/api/auth/login", {
+    username: els["login-username"].value,
+    password: els["login-password"].value,
+  });
+}
+
+async function submitRegister(event) {
+  event.preventDefault();
+  await authenticate("/api/auth/register", {
+    username: els["register-username"].value,
+    password: els["register-password"].value,
+  });
+}
+
+async function authenticate(path, payload) {
+  try {
+    const session = await readJson(await fetch(path, postOptions(payload, false)));
+    saveSession(session);
+    renderAuthState();
+    showToast("Sessao iniciada.");
+    await loadState();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel entrar.");
+  }
+}
+
+function restoreSession() {
+  try {
+    const raw = localStorage.getItem("financeiro-session");
+    state.session = raw ? JSON.parse(raw) : null;
+  } catch {
+    state.session = null;
+  }
+}
+
+function saveSession(session) {
+  state.session = session;
+  localStorage.setItem("financeiro-session", JSON.stringify(session));
+}
+
+function logout() {
+  state.session = null;
+  state.data = null;
+  localStorage.removeItem("financeiro-session");
+  renderAuthState();
+}
+
+function renderAuthState() {
+  const isLoggedIn = Boolean(state.session?.token);
+  els["auth-shell"].classList.toggle("hidden", isLoggedIn);
+  els["app-shell"].classList.toggle("hidden", !isLoggedIn);
+  if (isLoggedIn) {
+    els["current-user"].textContent = state.session.user?.username || "Usuario";
+  }
+}
+
+function switchAuthMode(mode) {
+  const isLogin = mode === "login";
+  els["login-tab"].classList.toggle("active", isLogin);
+  els["register-tab"].classList.toggle("active", !isLogin);
+  els["login-form"].classList.toggle("active", isLogin);
+  els["register-form"].classList.toggle("active", !isLogin);
 }
 
 function render() {
@@ -466,20 +561,38 @@ function switchView(view) {
   requestAnimationFrame(drawCharts);
 }
 
-function postOptions(payload) {
+function postOptions(payload, includeAuth = true) {
   return {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(includeAuth ? authHeaders() : {}),
+    },
     body: JSON.stringify(payload),
   };
 }
 
 async function readJson(response) {
-  const data = await response.json();
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text };
+    }
+  }
   if (!response.ok) {
+    if (response.status === 401) {
+      logout();
+    }
     throw new Error(data.error || "Erro inesperado.");
   }
   return data;
+}
+
+function authHeaders() {
+  return state.session?.token ? { Authorization: `Bearer ${state.session.token}` } : {};
 }
 
 function dateInputToUserDate(value) {

@@ -3,6 +3,7 @@ import { ENTRY_TYPES, ENTRY_INSTALLMENT } from "./lib/constants.js";
 import { parseMoneyCents } from "./lib/money.js";
 import { parseUserDate } from "./lib/dates.js";
 import { createEntry } from "./lib/finance.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -10,6 +11,7 @@ export default async (req: Request): Promise<Response> => {
   }
 
   try {
+    const user = await getUserFromRequest(req);
     const body = await req.json();
     const { type, name, amount, category, date, installments, status } = body;
 
@@ -40,6 +42,7 @@ export default async (req: Request): Promise<Response> => {
       !status || status === "Auto" ? undefined : String(status);
 
     await createEntry(
+      user.id,
       type,
       String(name),
       amountCents,

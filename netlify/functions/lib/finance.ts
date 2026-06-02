@@ -6,7 +6,6 @@ import {
   ENTRY_FIXED,
   ENTRY_INSTALLMENT,
   ENTRY_INCOME,
-  INITIAL_INVESTED_CENTS,
   MONTH_NAMES,
   STATUS_PAID,
   STATUS_UNPAID,
@@ -33,43 +32,44 @@ export type OccurrenceRow = {
   status: string;
 };
 
-export async function getInitialInvestedCents(): Promise<number> {
+export async function getInitialInvestedCents(userId: number): Promise<number> {
   const rows = await db
     .select()
     .from(settings)
-    .where(eq(settings.key, "initial_invested_cents"))
+    .where(and(eq(settings.userId, userId), eq(settings.key, "initial_invested_cents")))
     .limit(1);
-  return rows.length > 0 ? parseInt(rows[0].value) : INITIAL_INVESTED_CENTS;
+  return rows.length > 0 ? parseInt(rows[0].value) : 0;
 }
 
-export async function setInitialInvestedCents(cents: number): Promise<void> {
+export async function setInitialInvestedCents(userId: number, cents: number): Promise<void> {
   await db
     .insert(settings)
-    .values({ key: "initial_invested_cents", value: String(cents) })
+    .values({ userId, key: "initial_invested_cents", value: String(cents) })
     .onConflictDoUpdate({
-      target: settings.key,
+      target: [settings.userId, settings.key],
       set: { value: String(cents) },
     });
 }
 
-export async function getCategoryId(name: string): Promise<number | null> {
+export async function getCategoryId(userId: number, name: string): Promise<number | null> {
   const rows = await db
     .select({ id: categories.id })
     .from(categories)
-    .where(eq(categories.name, name))
+    .where(and(eq(categories.userId, userId), eq(categories.name, name)))
     .limit(1);
   return rows.length > 0 ? rows[0].id : null;
 }
 
-export async function getAllCategories(): Promise<string[]> {
+export async function getAllCategories(userId: number): Promise<string[]> {
   const rows = await db
     .select({ name: categories.name })
     .from(categories)
+    .where(eq(categories.userId, userId))
     .orderBy(asc(categories.id));
   return rows.map((r) => r.name);
 }
 
-export async function listOccurrences(year: number, month: number): Promise<OccurrenceRow[]> {
+export async function listOccurrences(userId: number, year: number, month: number): Promise<OccurrenceRow[]> {
   return db
     .select({
       id: occurrences.id,
@@ -85,7 +85,7 @@ export async function listOccurrences(year: number, month: number): Promise<Occu
     })
     .from(occurrences)
     .innerJoin(categories, eq(occurrences.categoryId, categories.id))
-    .where(and(eq(occurrences.year, year), eq(occurrences.month, month)))
+    .where(and(eq(occurrences.userId, userId), eq(occurrences.year, year), eq(occurrences.month, month)))
     .orderBy(asc(occurrences.dueDate), asc(occurrences.id));
 }
 
@@ -124,6 +124,7 @@ export function computeMonthlySummaryFromRows(
 }
 
 export async function computeYearInvested(
+  userId: number,
   year: number,
   initialInvested: number
 ): Promise<number> {
@@ -135,6 +136,7 @@ export async function computeYearInvested(
     .innerJoin(categories, eq(occurrences.categoryId, categories.id))
     .where(
       and(
+        eq(occurrences.userId, userId),
         eq(occurrences.year, year),
         eq(categories.name, "Investimento"),
         ne(occurrences.type, ENTRY_INCOME),
@@ -145,7 +147,7 @@ export async function computeYearInvested(
   return initial + Number(result.total);
 }
 
-export async function computeMonthlyCategories(year: number, month: number) {
+export async function computeMonthlyCategories(userId: number, year: number, month: number) {
   return db
     .select({
       category: categories.name,
@@ -155,6 +157,7 @@ export async function computeMonthlyCategories(year: number, month: number) {
     .innerJoin(categories, eq(occurrences.categoryId, categories.id))
     .where(
       and(
+        eq(occurrences.userId, userId),
         eq(occurrences.year, year),
         eq(occurrences.month, month),
         ne(occurrences.type, ENTRY_INCOME)
@@ -168,7 +171,7 @@ export async function computeMonthlyCategories(year: number, month: number) {
     );
 }
 
-export async function computeYearlyTotals(year: number) {
+export async function computeYearlyTotals(userId: number, year: number) {
   const rows = await db
     .select({
       month: occurrences.month,
@@ -178,7 +181,7 @@ export async function computeYearlyTotals(year: number) {
     })
     .from(occurrences)
     .innerJoin(categories, eq(occurrences.categoryId, categories.id))
-    .where(eq(occurrences.year, year))
+    .where(and(eq(occurrences.userId, userId), eq(occurrences.year, year)))
     .groupBy(occurrences.month)
     .orderBy(asc(occurrences.month));
 
@@ -201,6 +204,7 @@ export async function computeYearlyTotals(year: number) {
 }
 
 export async function createEntry(
+  userId: number,
   entryType: string,
   name: string,
   amountCents: number,
@@ -209,12 +213,13 @@ export async function createEntry(
   installments: number,
   statusOverride?: string
 ): Promise<void> {
-  const categoryId = await getCategoryId(category);
+  const categoryId = await getCategoryId(userId, category);
   if (!categoryId) throw new Error(`Categoria invalida: ${category}`);
 
   const [entry] = await db
     .insert(entries)
     .values({
+      userId,
       type: entryType,
       name: name.trim(),
       totalAmountCents: amountCents,
@@ -226,6 +231,7 @@ export async function createEntry(
     .returning({ id: entries.id });
 
   await insertOccurrences(
+    userId,
     entry.id,
     categoryId,
     entryType,
@@ -238,6 +244,7 @@ export async function createEntry(
 }
 
 async function insertOccurrences(
+  userId: number,
   entryId: number,
   categoryId: number,
   entryType: string,
@@ -258,6 +265,7 @@ async function insertOccurrences(
       const dueDate = `${ACTIVE_YEAR}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const status = statusOverride ?? defaultStatusForDate(dueDate);
       await db.insert(occurrences).values({
+        userId,
         entryId,
         categoryId,
         type: entryType,
@@ -281,6 +289,7 @@ async function insertOccurrences(
       const dueDate = addMonths(startDateIso, i);
       const status = statusOverride ?? defaultStatusForDate(dueDate);
       await db.insert(occurrences).values({
+        userId,
         entryId,
         categoryId,
         type: entryType,
@@ -301,6 +310,7 @@ async function insertOccurrences(
   // Variable or Income
   const status = statusOverride ?? defaultStatusForDate(startDateIso);
   await db.insert(occurrences).values({
+    userId,
     entryId,
     categoryId,
     type: entryType,

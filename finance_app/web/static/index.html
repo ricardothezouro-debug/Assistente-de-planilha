@@ -7,7 +7,48 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-shell" id="auth-shell">
+      <div class="auth-card">
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <strong>Financeiro</strong>
+            <span>Acesso</span>
+          </div>
+        </div>
+
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="login-tab" type="button">Entrar</button>
+          <button class="auth-tab" id="register-tab" type="button">Criar usuario</button>
+        </div>
+
+        <form class="auth-form active" id="login-form">
+          <label>
+            Usuario
+            <input id="login-username" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            Senha
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="button primary" type="submit">Entrar</button>
+        </form>
+
+        <form class="auth-form" id="register-form">
+          <label>
+            Usuario
+            <input id="register-username" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            Senha
+            <input id="register-password" type="password" autocomplete="new-password" required />
+          </label>
+          <button class="button primary" type="submit">Criar conta</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell hidden" id="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">F</div>
@@ -26,6 +67,11 @@
         <div class="side-note">
           <span class="signal"></span>
           <p>Banco na nuvem ativo. Acesse de qualquer dispositivo.</p>
+        </div>
+
+        <div class="user-box">
+          <span id="current-user">Usuario</span>
+          <button class="button ghost compact" id="logout-button" type="button">Sair</button>
         </div>
       </aside>
 

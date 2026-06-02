@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../../db/index.js";
-import { settings, categories } from "../../../db/schema.js";
+import { settings, categories, users } from "../../../db/schema.js";
 import {
   ACTIVE_YEAR,
   CATEGORIES,
@@ -9,6 +9,9 @@ import {
   INITIAL_INVESTED_CENTS,
 } from "./constants.js";
 import { createEntry } from "./finance.js";
+
+export const DEFAULT_USERNAME = "gamoxkun";
+export const DEFAULT_PASSWORD_HASH = "611fd55829d3540c2bc56b6c27777c8f19bfb63aee2ff595ac0b9160ed200ad3";
 
 const INITIAL_ENTRIES = [
   { type: ENTRY_FIXED, name: "Vivo", amountCents: 4300, category: "Assinatura", startDate: "2026-02-01", installments: 1 },
@@ -25,27 +28,52 @@ const INITIAL_ENTRIES = [
   { type: ENTRY_INSTALLMENT, name: "Resident evil", amountCents: 35180, category: "Entretenimento", startDate: "2026-04-01", installments: 4 },
 ] as const;
 
-async function initializeDefaults(): Promise<void> {
+export async function initializeDefaultsForUser(
+  userId: number,
+  initialInvestedCents = 0
+): Promise<void> {
   for (const name of CATEGORIES) {
-    await db.insert(categories).values({ name }).onConflictDoNothing();
+    await db
+      .insert(categories)
+      .values({ userId, name })
+      .onConflictDoNothing();
   }
   await db
     .insert(settings)
-    .values({ key: "active_year", value: String(ACTIVE_YEAR) })
+    .values({ userId, key: "active_year", value: String(ACTIVE_YEAR) })
     .onConflictDoNothing();
   await db
     .insert(settings)
-    .values({ key: "initial_invested_cents", value: String(INITIAL_INVESTED_CENTS) })
+    .values({
+      userId,
+      key: "initial_invested_cents",
+      value: String(initialInvestedCents),
+    })
     .onConflictDoNothing();
 }
 
-export async function seedIfNeeded(): Promise<void> {
-  await initializeDefaults();
+export async function seedDefaultUserIfNeeded(): Promise<void> {
+  await db
+    .insert(users)
+    .values({ username: DEFAULT_USERNAME, passwordHash: DEFAULT_PASSWORD_HASH })
+    .onConflictDoNothing();
+
+  const [defaultUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.username, DEFAULT_USERNAME))
+    .limit(1);
+
+  if (!defaultUser) {
+    throw new Error("Usuario padrao nao encontrado.");
+  }
+
+  await initializeDefaultsForUser(defaultUser.id, INITIAL_INVESTED_CENTS);
 
   // Try to claim the seed lock atomically
   const result = await db
     .insert(settings)
-    .values({ key: "seeded_initial_data", value: "1" })
+    .values({ userId: defaultUser.id, key: "seeded_initial_data", value: "1" })
     .onConflictDoNothing()
     .returning();
 
@@ -53,6 +81,7 @@ export async function seedIfNeeded(): Promise<void> {
 
   for (const entry of INITIAL_ENTRIES) {
     await createEntry(
+      defaultUser.id,
       entry.type,
       entry.name,
       entry.amountCents,
