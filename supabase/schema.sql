@@ -18,6 +18,46 @@ create table if not exists public.settings (
   primary key (user_id, key)
 );
 
+create table if not exists public.invite_tokens (
+  id serial primary key,
+  token_hash text not null unique,
+  email text not null,
+  created_by_user_id integer references public.users(id) on delete set null,
+  consumed_by_user_id integer references public.users(id) on delete set null,
+  expires_at timestamp not null,
+  consumed_at timestamp,
+  revoked_at timestamp,
+  created_at timestamp default now()
+);
+
+create index if not exists idx_invite_tokens_email
+  on public.invite_tokens(email);
+
+create index if not exists idx_invite_tokens_status
+  on public.invite_tokens(consumed_at, revoked_at, expires_at);
+
+create table if not exists public.audit_events (
+  id serial primary key,
+  actor_user_id integer references public.users(id) on delete set null,
+  target_user_id integer references public.users(id) on delete set null,
+  type text not null,
+  message text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  ip_address text,
+  user_agent text,
+  created_at timestamp default now()
+);
+
+create index if not exists idx_audit_events_created_at
+  on public.audit_events(created_at);
+
+create index if not exists idx_audit_events_type
+  on public.audit_events(type);
+
+alter table public.audit_events
+  alter column metadata type jsonb using coalesce(nullif(metadata::text, ''), '{}')::jsonb,
+  alter column metadata set default '{}'::jsonb;
+
 create table if not exists public.categories (
   id serial primary key,
   user_id integer not null references public.users(id) on delete cascade,
@@ -69,6 +109,8 @@ create index if not exists idx_occurrences_user_year_month
 
 alter table public.users enable row level security;
 alter table public.settings enable row level security;
+alter table public.invite_tokens enable row level security;
+alter table public.audit_events enable row level security;
 alter table public.categories enable row level security;
 alter table public.entries enable row level security;
 alter table public.occurrences enable row level security;
@@ -82,3 +124,5 @@ alter default privileges in schema public
 
 alter default privileges in schema public
   grant all privileges on sequences to service_role;
+
+notify pgrst, 'reload schema';

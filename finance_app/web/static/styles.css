@@ -105,6 +105,26 @@ select {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.auth-note,
+.privacy-link {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.auth-note {
+  margin: -4px 0 0;
+}
+
+.privacy-link {
+  text-align: center;
+  text-decoration: none;
+}
+
+.privacy-link:hover {
+  color: var(--cyan);
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
@@ -478,6 +498,42 @@ select:focus {
   min-height: auto;
 }
 
+.admin-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.admin-pane {
+  display: none;
+}
+
+.admin-pane.active {
+  display: block;
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 140px auto;
+  gap: 12px;
+  align-items: end;
+  padding: 0 16px 16px;
+}
+
+.backup-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 16px 16px;
+}
+
+.backup-box p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
 .inline-control select {
   min-width: 0;
 }
@@ -601,6 +657,31 @@ td {
   grid-template-columns: 1fr 1fr;
 }
 
+.privacy-page {
+  width: min(860px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.privacy-panel {
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+}
+
+.privacy-panel h1 {
+  margin-bottom: 10px;
+}
+
+.privacy-panel h2 {
+  margin-top: 10px;
+}
+
+.privacy-panel p {
+  color: var(--muted);
+  line-height: 1.62;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -629,8 +710,14 @@ td {
   .dashboard-grid,
   .chart-layout,
   .launch-grid,
-  .profile-grid {
+  .profile-grid,
+  .admin-form {
     grid-template-columns: 1fr;
+  }
+
+  .backup-box {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -651,5 +738,9 @@ td {
 
   .brand span {
     display: none;
+  }
+
+  .admin-tabs {
+    grid-template-columns: 1fr 1fr;
   }
 }

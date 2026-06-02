@@ -42,6 +42,36 @@ type OccurrenceRow = {
   status: string;
 };
 
+type RequestMeta = {
+  origin: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+};
+
+type InviteTokenRow = {
+  id: number;
+  token_hash: string;
+  email: string;
+  created_by_user_id: number | null;
+  consumed_by_user_id: number | null;
+  expires_at: string;
+  consumed_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+};
+
+type AuditEventRow = {
+  id: number;
+  actor_user_id: number | null;
+  target_user_id: number | null;
+  type: string;
+  message: string;
+  metadata: Record<string, unknown> | string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string | null;
+};
+
 const ACTIVE_YEAR = 2026;
 const INITIAL_INVESTED_CENTS = 600_000;
 const PAID_CUTOFF_ISO = "2026-05-31";
@@ -105,6 +135,11 @@ export async function onRequest(context: Context): Promise<Response> {
     const path = url.pathname.replace(/^\/api\/?/, "");
     const segments = path.split("/").filter(Boolean);
     const db = serviceDb(context.env);
+    const meta = requestMeta(request);
+
+    if (method === "GET" && segments.join("/") === "invites/preview") {
+      return previewInviteEndpoint(db, url);
+    }
 
     if (method === "POST" && segments.join("/") === "auth/login") {
       return forbiddenLegacyAuth();
@@ -113,7 +148,7 @@ export async function onRequest(context: Context): Promise<Response> {
       return forbiddenLegacyAuth();
     }
 
-    const user = await getUserFromRequest(request, context.env, db);
+    const user = await getUserFromRequest(request, context.env, db, meta);
 
     if (method === "GET" && segments[0] === "state") {
       return json(await getState(db, user, url));
@@ -125,13 +160,13 @@ export async function onRequest(context: Context): Promise<Response> {
       return createCategoryEndpoint(db, user, await request.json());
     }
     if (method === "POST" && segments[0] === "categories" && segments[2] === "delete") {
-      return deleteCategoryEndpoint(db, user, Number(segments[1]));
+      return deleteCategoryEndpoint(db, user, meta, Number(segments[1]));
     }
     if (method === "POST" && segments[0] === "occurrences" && segments[2] === "toggle") {
       return toggleOccurrenceEndpoint(db, user, Number(segments[1]));
     }
     if (method === "POST" && segments[0] === "delete") {
-      return deleteOccurrenceEndpoint(db, user, await request.json());
+      return deleteOccurrenceEndpoint(db, user, meta, await request.json());
     }
     if (method === "POST" && segments.join("/") === "settings/initial-invested") {
       return updateInitialInvestedEndpoint(db, user, await request.json());
@@ -143,8 +178,23 @@ export async function onRequest(context: Context): Promise<Response> {
     if (method === "GET" && segments.join("/") === "admin/users") {
       return listAdminUsersEndpoint(db, user);
     }
+    if (method === "GET" && segments.join("/") === "admin/invites") {
+      return listAdminInvitesEndpoint(db, user);
+    }
+    if (method === "POST" && segments.join("/") === "admin/invites") {
+      return createAdminInviteEndpoint(db, user, meta, await request.json());
+    }
+    if (method === "POST" && segments[0] === "admin" && segments[1] === "invites" && segments[3] === "revoke") {
+      return revokeAdminInviteEndpoint(db, user, meta, Number(segments[2]));
+    }
+    if (method === "GET" && segments.join("/") === "admin/audit-events") {
+      return listAdminAuditEventsEndpoint(db, user, url);
+    }
+    if (method === "GET" && segments.join("/") === "admin/backup") {
+      return adminBackupEndpoint(db, user, meta);
+    }
     if (method === "POST" && segments[0] === "admin" && segments[1] === "users" && segments[2]) {
-      return adminUserActionEndpoint(db, user, Number(segments[2]), await request.json());
+      return adminUserActionEndpoint(db, user, meta, Number(segments[2]), await request.json());
     }
 
     return json({ error: "Rota nao encontrada." }, 404);
@@ -179,20 +229,27 @@ async function getAuthUser(env: Env, token: string): Promise<SupabaseAuthUser> {
   return response.json();
 }
 
-async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient): Promise<AppUser> {
+async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient, meta: RequestMeta): Promise<AppUser> {
   const auth = request.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
   if (!token) throw statusError("Login necessario.", 401);
 
   const authUser = await getAuthUser(env, token);
+  const inviteToken = request.headers.get("X-Invite-Token")?.trim() || "";
 
   await seedDefaultUserIfNeeded(db);
-  const user = await getOrCreateAppUser(db, env, authUser);
+  const user = await getOrCreateAppUser(db, env, authUser, inviteToken, meta);
   if (user.disabledAt) throw statusError("Conta desativada pelo admin.", 403);
   return user;
 }
 
-async function getOrCreateAppUser(db: SupabaseClient, env: Env, authUser: SupabaseAuthUser): Promise<AppUser> {
+async function getOrCreateAppUser(
+  db: SupabaseClient,
+  env: Env,
+  authUser: SupabaseAuthUser,
+  inviteToken: string,
+  meta: RequestMeta
+): Promise<AppUser> {
   const supabaseUserId = authUser.id;
   const email = authUser.email?.trim().toLowerCase() ?? "";
   const adminEmail = getAdminEmail(env);
@@ -261,6 +318,8 @@ async function getOrCreateAppUser(db: SupabaseClient, env: Env, authUser: Supaba
     }
   }
 
+  const canCreateWithoutInvite = Boolean(email && email === adminEmail);
+  const invite = canCreateWithoutInvite ? null : await requireValidInvite(db, inviteToken, email);
   const username = await nextAvailableUsername(db, usernameFromSupabase(authUser));
   const created = await single<AppUserRow>(
     db
@@ -276,6 +335,17 @@ async function getOrCreateAppUser(db: SupabaseClient, env: Env, authUser: Supaba
       .select(userSelect())
   );
   await initializeDefaultsForUser(db, created.id, 0);
+  if (invite) {
+    await consumeInvite(db, invite, created.id, meta);
+  }
+  await audit(db, {
+    actorUserId: created.id,
+    targetUserId: created.id,
+    type: "profile_created",
+    message: invite ? `Perfil criado por convite para ${email}.` : `Perfil admin criado para ${email}.`,
+    metadata: { email, inviteId: invite?.id ?? null },
+    meta,
+  });
   return mapUser(created);
 }
 
@@ -348,7 +418,7 @@ async function createCategoryEndpoint(db: SupabaseClient, user: AppUser, body: a
   return json({ category: name }, 201);
 }
 
-async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, categoryId: number) {
+async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, categoryId: number) {
   if (!categoryId) return json({ error: "ID invalido." }, 400);
   const category = await maybeSingle<{ id: number; name: string }>(
     db.from("categories").select("id,name").eq("id", categoryId).eq("user_id", user.id).limit(1)
@@ -369,6 +439,14 @@ async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, categor
   }
 
   await checked(db.from("categories").delete().eq("id", categoryId).eq("user_id", user.id));
+  await audit(db, {
+    actorUserId: user.id,
+    targetUserId: user.id,
+    type: "category_deleted",
+    message: `Categoria removida: ${category.name}.`,
+    metadata: { categoryId, category: category.name },
+    meta,
+  });
   return json({ ok: true });
 }
 
@@ -390,7 +468,7 @@ async function toggleOccurrenceEndpoint(db: SupabaseClient, user: AppUser, id: n
   return json({ status });
 }
 
-async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, body: any) {
+async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, body: any) {
   const id = Number(typeof body.occurrence_id === "number" ? body.occurrence_id : body.occurrenceId);
   const scope = String(body.scope ?? "all");
   if (!id) return json({ error: "ID invalido." }, 400);
@@ -409,6 +487,14 @@ async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, body:
   } else {
     await checked(db.from("entries").delete().eq("id", row.entry_id).eq("user_id", user.id));
   }
+  await audit(db, {
+    actorUserId: user.id,
+    targetUserId: user.id,
+    type: "entry_deleted",
+    message: `Lancamento removido com escopo ${scope}.`,
+    metadata: { occurrenceId: id, entryId: row.entry_id, scope },
+    meta,
+  });
   return json({ ok: true });
 }
 
@@ -434,10 +520,17 @@ async function updateProfileEndpoint(db: SupabaseClient, user: AppUser, body: an
 
 async function listAdminUsersEndpoint(db: SupabaseClient, user: AppUser) {
   requireAdmin(user);
-  const rows = await many<AppUserRow>(db.from("users").select(userSelect()).order("id", { ascending: true }));
+  const [rows, invites] = await Promise.all([
+    many<AppUserRow>(db.from("users").select(userSelect()).order("id", { ascending: true })),
+    many<InviteTokenRow>(db.from("invite_tokens").select(inviteSelect())),
+  ]);
+  const inviteByUserId = new Map(
+    invites.filter((invite) => invite.consumed_by_user_id).map((invite) => [invite.consumed_by_user_id, invite])
+  );
   return json({
     users: rows.map((row) => {
       const item = mapUser(row);
+      const invite = inviteByUserId.get(item.id) ?? null;
       return {
         id: item.id,
         username: item.username,
@@ -447,13 +540,14 @@ async function listAdminUsersEndpoint(db: SupabaseClient, user: AppUser) {
         disabledAt: item.disabledAt,
         createdAt: row.created_at,
         features: item.features,
+        invite: invite ? publicInvite(invite) : null,
         isCurrentUser: item.id === user.id,
       };
     }),
   });
 }
 
-async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, targetId: number, body: any) {
+async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, targetId: number, body: any) {
   requireAdmin(user);
   if (!targetId) return json({ error: "ID invalido." }, 400);
   const action = String(body.action ?? "");
@@ -461,10 +555,26 @@ async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, target
   if (action === "disable") {
     if (targetId === user.id) return json({ error: "Voce nao pode desativar sua propria conta." }, 400);
     await checked(db.from("users").update({ disabled_at: new Date().toISOString() }).eq("id", targetId));
+    await audit(db, {
+      actorUserId: user.id,
+      targetUserId: targetId,
+      type: "user_disabled",
+      message: "Conta desativada pelo admin.",
+      metadata: {},
+      meta,
+    });
     return json({ ok: true });
   }
   if (action === "enable") {
     await checked(db.from("users").update({ disabled_at: null }).eq("id", targetId));
+    await audit(db, {
+      actorUserId: user.id,
+      targetUserId: targetId,
+      type: "user_enabled",
+      message: "Conta reativada pelo admin.",
+      metadata: {},
+      meta,
+    });
     return json({ ok: true });
   }
   if (action === "feature") {
@@ -477,9 +587,252 @@ async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, target
     if (!target) return json({ error: "Usuario nao encontrado." }, 404);
     const nextFeatures = { ...parseFeatureFlags(target.feature_flags), [key]: enabled };
     await checked(db.from("users").update({ feature_flags: JSON.stringify(nextFeatures) }).eq("id", targetId));
+    await audit(db, {
+      actorUserId: user.id,
+      targetUserId: targetId,
+      type: "feature_changed",
+      message: `Feature ${key} ${enabled ? "ativada" : "desativada"}.`,
+      metadata: { key, enabled },
+      meta,
+    });
     return json({ ok: true, features: nextFeatures });
   }
   return json({ error: "Acao invalida." }, 400);
+}
+
+async function previewInviteEndpoint(db: SupabaseClient, url: URL) {
+  const token = url.searchParams.get("token")?.trim() ?? "";
+  if (!token) return json({ valid: false, error: "Convite ausente." }, 400);
+  const invite = await findInviteByToken(db, token);
+  if (!invite) return json({ valid: false, error: "Convite nao encontrado." }, 404);
+  const status = inviteStatus(invite);
+  return json({
+    valid: status === "ativo",
+    status,
+    email: invite.email,
+    expiresAt: invite.expires_at,
+  }, status === "ativo" ? 200 : 400);
+}
+
+async function listAdminInvitesEndpoint(db: SupabaseClient, user: AppUser) {
+  requireAdmin(user);
+  const rows = await many<InviteTokenRow>(
+    db.from("invite_tokens").select(inviteSelect()).order("created_at", { ascending: false }).limit(100)
+  );
+  return json({ invites: rows.map(publicInvite) });
+}
+
+async function createAdminInviteEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, body: any) {
+  requireAdmin(user);
+  const email = normalizeEmail(body.email);
+  if (!email) return json({ error: "Informe um email valido." }, 400);
+  const expiresInDays = clampInt(body.expiresInDays, 1, 90, 7);
+  const token = randomToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+  const invite = await single<InviteTokenRow>(
+    db
+      .from("invite_tokens")
+      .insert({
+        token_hash: tokenHash,
+        email,
+        created_by_user_id: user.id,
+        expires_at: expiresAt,
+      })
+      .select(inviteSelect())
+  );
+  const link = `${meta.origin}/?invite=${encodeURIComponent(token)}`;
+  await audit(db, {
+    actorUserId: user.id,
+    targetUserId: null,
+    type: "invite_created",
+    message: `Convite criado para ${email}.`,
+    metadata: { inviteId: invite.id, email, expiresAt },
+    meta,
+  });
+  return json({ invite: publicInvite(invite), link }, 201);
+}
+
+async function revokeAdminInviteEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, inviteId: number) {
+  requireAdmin(user);
+  if (!inviteId) return json({ error: "ID invalido." }, 400);
+  const invite = await maybeSingle<InviteTokenRow>(
+    db.from("invite_tokens").select(inviteSelect()).eq("id", inviteId).limit(1)
+  );
+  if (!invite) return json({ error: "Convite nao encontrado." }, 404);
+  if (invite.consumed_at) return json({ error: "Convite ja usado nao pode ser revogado." }, 400);
+
+  const updated = await single<InviteTokenRow>(
+    db
+      .from("invite_tokens")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", inviteId)
+      .select(inviteSelect())
+  );
+  await audit(db, {
+    actorUserId: user.id,
+    targetUserId: null,
+    type: "invite_revoked",
+    message: `Convite revogado para ${invite.email}.`,
+    metadata: { inviteId, email: invite.email },
+    meta,
+  });
+  return json({ invite: publicInvite(updated) });
+}
+
+async function listAdminAuditEventsEndpoint(db: SupabaseClient, user: AppUser, url: URL) {
+  requireAdmin(user);
+  const type = url.searchParams.get("type")?.trim();
+  const userId = Number(url.searchParams.get("userId") ?? 0);
+  const limit = clampInt(url.searchParams.get("limit"), 1, 100, 50);
+  let query = db.from("audit_events").select(auditSelect()).order("created_at", { ascending: false }).limit(limit);
+  if (type) query = query.eq("type", type);
+  if (userId) query = query.eq("target_user_id", userId);
+  const rows = await many<AuditEventRow>(query);
+  return json({ events: rows.map(publicAuditEvent) });
+}
+
+async function adminBackupEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta) {
+  requireAdmin(user);
+  const [users, settings, categories, entries, occurrences, invites, auditEvents] = await Promise.all([
+    many<Record<string, unknown>>(db.from("users").select("*").order("id", { ascending: true })),
+    many<Record<string, unknown>>(db.from("settings").select("*")),
+    many<Record<string, unknown>>(db.from("categories").select("*")),
+    many<Record<string, unknown>>(db.from("entries").select("*")),
+    many<Record<string, unknown>>(db.from("occurrences").select("*")),
+    many<Record<string, unknown>>(db.from("invite_tokens").select("*")),
+    many<Record<string, unknown>>(db.from("audit_events").select("*").order("created_at", { ascending: false }).limit(1000)),
+  ]);
+  await audit(db, {
+    actorUserId: user.id,
+    targetUserId: null,
+    type: "backup_downloaded",
+    message: "Backup manual baixado pelo admin.",
+    metadata: { users: users.length, entries: entries.length, occurrences: occurrences.length },
+    meta,
+  });
+  return jsonDownload(
+    {
+      exportedAt: new Date().toISOString(),
+      version: 1,
+      users,
+      settings,
+      categories,
+      entries,
+      occurrences,
+      invites,
+      auditEvents,
+    },
+    `financeiro-backup-${todayIso()}.json`
+  );
+}
+
+async function requireValidInvite(db: SupabaseClient, token: string, email: string) {
+  if (!token) throw statusError("Convite necessario para criar uma nova conta.", 403);
+  if (!email) throw statusError("Sua conta precisa ter email para usar convite.", 403);
+  const invite = await findInviteByToken(db, token);
+  if (!invite) throw statusError("Convite invalido.", 403);
+  const status = inviteStatus(invite);
+  if (status !== "ativo") throw statusError(`Convite ${status}.`, 403);
+  if (invite.email.trim().toLowerCase() !== email.trim().toLowerCase()) {
+    throw statusError("Este convite pertence a outro email.", 403);
+  }
+  return invite;
+}
+
+async function consumeInvite(db: SupabaseClient, invite: InviteTokenRow, userId: number, meta: RequestMeta) {
+  const consumed = await checked<{ id: number }[]>(
+    db
+      .from("invite_tokens")
+      .update({ consumed_at: new Date().toISOString(), consumed_by_user_id: userId })
+      .eq("id", invite.id)
+      .is("consumed_at", null)
+      .is("revoked_at", null)
+      .select("id")
+  );
+  if (!consumed.length) throw statusError("Convite ja foi usado ou revogado.", 403);
+  await audit(db, {
+    actorUserId: userId,
+    targetUserId: userId,
+    type: "invite_consumed",
+    message: `Convite consumido por ${invite.email}.`,
+    metadata: { inviteId: invite.id, email: invite.email },
+    meta,
+  });
+}
+
+async function findInviteByToken(db: SupabaseClient, token: string) {
+  const tokenHash = await hashToken(token);
+  return maybeSingle<InviteTokenRow>(
+    db.from("invite_tokens").select(inviteSelect()).eq("token_hash", tokenHash).limit(1)
+  );
+}
+
+function inviteSelect() {
+  return "id,token_hash,email,created_by_user_id,consumed_by_user_id,expires_at,consumed_at,revoked_at,created_at";
+}
+
+function auditSelect() {
+  return "id,actor_user_id,target_user_id,type,message,metadata,ip_address,user_agent,created_at";
+}
+
+function publicInvite(invite: InviteTokenRow) {
+  return {
+    id: invite.id,
+    email: invite.email,
+    status: inviteStatus(invite),
+    createdByUserId: invite.created_by_user_id,
+    consumedByUserId: invite.consumed_by_user_id,
+    expiresAt: invite.expires_at,
+    consumedAt: invite.consumed_at,
+    revokedAt: invite.revoked_at,
+    createdAt: invite.created_at,
+  };
+}
+
+function inviteStatus(invite: InviteTokenRow) {
+  if (invite.revoked_at) return "revogado";
+  if (invite.consumed_at) return "usado";
+  if (new Date(invite.expires_at).getTime() <= Date.now()) return "expirado";
+  return "ativo";
+}
+
+function publicAuditEvent(row: AuditEventRow) {
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    targetUserId: row.target_user_id,
+    type: row.type,
+    message: row.message,
+    metadata: typeof row.metadata === "string" ? parseJsonObject(row.metadata) : (row.metadata ?? {}),
+    ipAddress: row.ip_address,
+    userAgent: row.user_agent,
+    createdAt: row.created_at,
+  };
+}
+
+async function audit(
+  db: SupabaseClient,
+  event: {
+    actorUserId: number | null;
+    targetUserId: number | null;
+    type: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    meta: RequestMeta;
+  }
+) {
+  await checked(
+    db.from("audit_events").insert({
+      actor_user_id: event.actorUserId,
+      target_user_id: event.targetUserId,
+      type: event.type,
+      message: event.message,
+      metadata: event.metadata ?? {},
+      ip_address: event.meta.ipAddress,
+      user_agent: event.meta.userAgent,
+    })
+  );
 }
 
 async function seedDefaultUserIfNeeded(db: SupabaseClient) {
@@ -917,6 +1270,17 @@ function parseFeatureFlags(value: string | null | undefined) {
   }
 }
 
+function parseJsonObject(value: string | null | undefined) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 function requireAdmin(user: AppUser) {
   if (!user.isAdmin) throw statusError("Acesso de admin necessario.", 403);
 }
@@ -927,6 +1291,56 @@ function getAdminEmail(env: Env) {
 
 function normalizeDisplayName(value: unknown) {
   return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 48);
+}
+
+function normalizeEmail(value: unknown) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number) {
+  const parsed = parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function requestMeta(request: Request): RequestMeta {
+  const url = new URL(request.url);
+  return {
+    origin: url.origin,
+    ipAddress: trimForLog(
+      request.headers.get("CF-Connecting-IP") ??
+        request.headers.get("x-forwarded-for")?.split(",")[0] ??
+        null,
+      64
+    ),
+    userAgent: trimForLog(request.headers.get("user-agent"), 160),
+  };
+}
+
+function trimForLog(value: string | null | undefined, limit: number) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized.slice(0, limit) : null;
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
+function base64Url(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function hashToken(token: string) {
+  const bytes = new TextEncoder().encode(token);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function parseMoneyCents(value: string) {
@@ -1209,6 +1623,15 @@ async function single<T>(query: any) {
 
 function json(payload: unknown, status = 200) {
   return Response.json(payload, { status });
+}
+
+function jsonDownload(payload: unknown, filename: string) {
+  return new Response(JSON.stringify(payload, null, 2), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
 }
 
 function forbiddenLegacyAuth() {

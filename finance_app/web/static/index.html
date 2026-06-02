@@ -19,8 +19,10 @@
 
         <div class="auth-tabs">
           <button class="auth-tab active" id="login-tab" type="button">Entrar</button>
-          <button class="auth-tab" id="register-tab" type="button">Criar usuario</button>
+          <button class="auth-tab hidden" id="register-tab" type="button">Criar com convite</button>
         </div>
+
+        <p class="auth-note" id="invite-note">Novas contas entram somente por convite.</p>
 
         <form class="auth-form active" id="login-form">
           <label>
@@ -66,6 +68,7 @@
 
         <div class="auth-separator" id="auth-separator"><span>ou</span></div>
         <button class="button ghost" id="google-login-button" type="button">Entrar com Google</button>
+        <a class="privacy-link" href="/privacy.html">Politica de privacidade</a>
       </div>
     </section>
 
@@ -329,25 +332,91 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Admin</p>
-                <h2>Contas do app</h2>
+                <h2>Painel de controle</h2>
               </div>
               <button class="button compact" id="admin-refresh-button" type="button">Atualizar</button>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Usuario</th>
-                    <th>Email</th>
-                    <th>Nome</th>
-                    <th>Perfil</th>
-                    <th>Status</th>
-                    <th>IA chat</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="admin-user-rows"></tbody>
-              </table>
+
+            <div class="admin-tabs">
+              <button class="auth-tab active" type="button" data-admin-tab="users">Usuarios</button>
+              <button class="auth-tab" type="button" data-admin-tab="invites">Convites</button>
+              <button class="auth-tab" type="button" data-admin-tab="logs">Logs</button>
+              <button class="auth-tab" type="button" data-admin-tab="backup">Backup</button>
+            </div>
+
+            <div class="admin-pane active" id="admin-users-pane">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Usuario</th>
+                      <th>Email</th>
+                      <th>Nome</th>
+                      <th>Perfil</th>
+                      <th>Status</th>
+                      <th>Convite</th>
+                      <th>IA chat</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-user-rows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="admin-pane" id="admin-invites-pane">
+              <form class="admin-form" id="invite-form">
+                <label>
+                  Email do convidado
+                  <input id="invite-email" type="email" placeholder="pessoa@email.com" required />
+                </label>
+                <label>
+                  Expira em dias
+                  <input id="invite-days" type="number" min="1" max="90" value="7" />
+                </label>
+                <button class="button primary" type="submit">Gerar convite</button>
+              </form>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Expira</th>
+                      <th>Usado em</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-invite-rows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="admin-pane" id="admin-logs-pane">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Tipo</th>
+                      <th>Mensagem</th>
+                      <th>Alvo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-log-rows"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="admin-pane" id="admin-backup-pane">
+              <div class="backup-box">
+                <div>
+                  <p class="eyebrow">Backup manual</p>
+                  <h2>Exportar dados do app</h2>
+                  <p>Baixa um JSON com usuarios, lancamentos, categorias, convites e logs recentes.</p>
+                </div>
+                <button class="button primary" id="backup-button" type="button">Baixar backup</button>
+              </div>
             </div>
           </section>
         </section>
