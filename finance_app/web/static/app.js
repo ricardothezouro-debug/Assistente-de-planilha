@@ -6,14 +6,21 @@ const state = {
   session: null,
   passwordRecovery: false,
   adminUsers: [],
+  adminInvites: [],
+  auditEvents: [],
+  adminTab: "users",
+  inviteToken: "",
+  invitePreview: null,
 };
 
 const els = {};
 const SUPABASE_URL = "https://yrarkwxaivsqsnpgabmh.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_RYJDWtHHQKmb9bIrrw9IIA_wY3u8GiD";
+const INVITE_STORAGE_KEY = "financeiro-invite-token";
 let supabaseClient = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+  captureInviteToken();
   supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) ?? null;
   bindElements();
   bindEvents();
@@ -29,6 +36,7 @@ function bindElements() {
     "register-tab",
     "login-form",
     "register-form",
+    "invite-note",
     "login-username",
     "login-password",
     "forgot-password-button",
@@ -70,6 +78,12 @@ function bindElements() {
     "profile-category-list",
     "admin-refresh-button",
     "admin-user-rows",
+    "invite-form",
+    "invite-email",
+    "invite-days",
+    "admin-invite-rows",
+    "admin-log-rows",
+    "backup-button",
     "edit-invested-button",
     "category-chart",
     "year-chart",
@@ -130,7 +144,12 @@ function bindEvents() {
   });
   els["profile-form"].addEventListener("submit", submitProfile);
   els["password-form"].addEventListener("submit", submitPassword);
-  els["admin-refresh-button"].addEventListener("click", loadAdminUsers);
+  els["admin-refresh-button"].addEventListener("click", loadAdminData);
+  els["invite-form"].addEventListener("submit", submitInvite);
+  els["backup-button"].addEventListener("click", downloadBackup);
+  document.querySelectorAll("[data-admin-tab]").forEach((button) => {
+    button.addEventListener("click", () => switchAdminTab(button.dataset.adminTab));
+  });
   els["edit-invested-button"].addEventListener("click", editInitialInvested);
   els["text-cancel-button"].addEventListener("click", () => els["text-dialog"].close());
   window.addEventListener("resize", debounce(drawCharts, 120));
@@ -157,6 +176,7 @@ async function loadState() {
     state.data = data;
     if (data.user) {
       updateSessionUser(data.user);
+      clearInviteToken();
     }
     state.year = data.selectedYear;
     state.month = data.selectedMonth;
@@ -186,6 +206,10 @@ async function submitLogin(event) {
 
 async function submitRegister(event) {
   event.preventDefault();
+  if (!state.inviteToken || state.invitePreview?.valid === false) {
+    showToast("Cadastro permitido somente por convite valido.");
+    return;
+  }
   try {
     const client = requireSupabase();
     const username = els["register-username"].value.trim();
@@ -194,7 +218,7 @@ async function submitRegister(event) {
       password: els["register-password"].value,
       options: {
         data: username ? { username } : {},
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: inviteRedirectUrl(),
       },
     });
     if (error) throw error;
@@ -217,7 +241,7 @@ async function loginWithGoogle() {
     const { error } = await client.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: inviteRedirectUrl(),
       },
     });
     if (error) throw error;
@@ -278,6 +302,7 @@ async function submitPasswordRecovery(event) {
 
 async function bootSession() {
   const isRecovery = isPasswordRecoveryUrl();
+  await loadInvitePreview();
   await restoreSupabaseSession();
   if (isRecovery && state.session) {
     showPasswordRecovery();
@@ -320,6 +345,51 @@ function showPasswordRecovery() {
   state.passwordRecovery = true;
   renderAuthState();
   switchAuthMode("reset");
+}
+
+function captureInviteToken() {
+  const token = new URLSearchParams(window.location.search).get("invite")?.trim();
+  if (token) {
+    state.inviteToken = token;
+    localStorage.setItem(INVITE_STORAGE_KEY, token);
+    return;
+  }
+  state.inviteToken = localStorage.getItem(INVITE_STORAGE_KEY) || "";
+}
+
+async function loadInvitePreview() {
+  if (!state.inviteToken) return;
+  try {
+    const data = await readJson(
+      await fetch(`/api/invites/preview?token=${encodeURIComponent(state.inviteToken)}`)
+    );
+    state.invitePreview = data;
+    if (data.email) {
+      els["register-email"].value = data.email;
+      els["register-email"].readOnly = true;
+      els["login-username"].value = data.email;
+    }
+    switchAuthMode("register");
+  } catch (error) {
+    state.invitePreview = { valid: false, error: error.message };
+    showToast(error.message || "Convite invalido.");
+  }
+}
+
+function clearInviteToken() {
+  if (!state.inviteToken) return;
+  state.inviteToken = "";
+  state.invitePreview = null;
+  els["register-email"].readOnly = false;
+  localStorage.removeItem(INVITE_STORAGE_KEY);
+  if (new URLSearchParams(window.location.search).has("invite")) {
+    clearAuthUrl();
+  }
+}
+
+function inviteRedirectUrl() {
+  if (!state.inviteToken) return window.location.origin;
+  return `${window.location.origin}/?invite=${encodeURIComponent(state.inviteToken)}`;
 }
 
 function clearAuthUrl() {
@@ -377,8 +447,13 @@ async function logout() {
 
 function renderAuthState() {
   const isLoggedIn = Boolean(state.session?.token);
+  const hasInvite = Boolean(state.inviteToken && state.invitePreview?.valid !== false);
   els["auth-shell"].classList.toggle("hidden", isLoggedIn && !state.passwordRecovery);
   els["app-shell"].classList.toggle("hidden", !isLoggedIn || state.passwordRecovery);
+  els["register-tab"].classList.toggle("hidden", !hasInvite || state.passwordRecovery);
+  els["invite-note"].textContent = hasInvite
+    ? `Convite ativo para ${state.invitePreview?.email || "este email"}.`
+    : "Novas contas entram somente por convite.";
   if (isLoggedIn) {
     const user = state.session.user ?? {};
     els["current-user"].textContent = user.displayName || user.username || "Usuario";
@@ -392,6 +467,9 @@ function renderAuthState() {
 }
 
 function switchAuthMode(mode) {
+  if (mode === "register" && !state.inviteToken) {
+    mode = "login";
+  }
   const isLogin = mode === "login";
   const isReset = mode === "reset";
   els["login-tab"].classList.toggle("active", isLogin);
@@ -410,6 +488,8 @@ function render() {
   renderTables();
   renderProfile();
   renderAdminUsers();
+  renderAdminInvites();
+  renderAuditEvents();
   drawCharts();
 }
 
@@ -536,6 +616,19 @@ function displayStatus(status, type) {
     return status === "Pago" ? "Recebido" : "Nao recebido";
   }
   return status;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function submitEntry(event) {
@@ -773,10 +866,33 @@ async function loadAdminUsers() {
   }
 }
 
+async function loadAdminInvites() {
+  if (!state.session?.user?.isAdmin) return;
+  const data = await readJson(await fetch("/api/admin/invites", { headers: authHeaders() }));
+  state.adminInvites = data.invites ?? [];
+  renderAdminInvites();
+}
+
+async function loadAuditEvents() {
+  if (!state.session?.user?.isAdmin) return;
+  const data = await readJson(await fetch("/api/admin/audit-events?limit=50", { headers: authHeaders() }));
+  state.auditEvents = data.events ?? [];
+  renderAuditEvents();
+}
+
+async function loadAdminData() {
+  if (!state.session?.user?.isAdmin) return;
+  try {
+    await Promise.all([loadAdminUsers(), loadAdminInvites(), loadAuditEvents()]);
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel carregar o admin.");
+  }
+}
+
 function renderAdminUsers() {
   if (!els["admin-user-rows"]) return;
   if (!state.session?.user?.isAdmin) {
-    els["admin-user-rows"].innerHTML = emptyRow(7);
+    els["admin-user-rows"].innerHTML = emptyRow(8);
     return;
   }
 
@@ -798,6 +914,7 @@ function renderAdminUsers() {
           <td>${escapeHtml(user.displayName || "-")}</td>
           <td>${user.isAdmin ? "Admin" : "Usuario"}</td>
           <td><span class="pill ${statusClass}">${status}</span></td>
+          <td>${user.invite ? escapeHtml(user.invite.email) : "-"}</td>
           <td>
             <label class="toggle-cell">
               <input type="checkbox" ${aiChecked} onchange="toggleUserFeature(${user.id}, 'ai_chat', this.checked)" />
@@ -808,7 +925,50 @@ function renderAdminUsers() {
         </tr>
       `;
     })
-    .join("") || emptyRow(7);
+    .join("") || emptyRow(8);
+}
+
+function renderAdminInvites() {
+  if (!els["admin-invite-rows"]) return;
+  els["admin-invite-rows"].innerHTML = state.adminInvites
+    .map((invite) => {
+      const canRevoke = invite.status === "ativo";
+      return `
+        <tr>
+          <td>${escapeHtml(invite.email)}</td>
+          <td>${statusPillForInvite(invite.status)}</td>
+          <td>${formatDateTime(invite.expiresAt)}</td>
+          <td>${invite.consumedAt ? formatDateTime(invite.consumedAt) : "-"}</td>
+          <td>
+            ${
+              canRevoke
+                ? `<button class="button compact ghost" type="button" onclick="revokeInvite(${invite.id})">Revogar</button>`
+                : `<span class="muted-text">Sem acao</span>`
+            }
+          </td>
+        </tr>
+      `;
+    })
+    .join("") || emptyRow(5);
+}
+
+function renderAuditEvents() {
+  if (!els["admin-log-rows"]) return;
+  els["admin-log-rows"].innerHTML = state.auditEvents
+    .map((event) => `
+      <tr>
+        <td>${formatDateTime(event.createdAt)}</td>
+        <td>${escapeHtml(event.type)}</td>
+        <td>${escapeHtml(event.message)}</td>
+        <td>${event.targetUserId || "-"}</td>
+      </tr>
+    `)
+    .join("") || emptyRow(4);
+}
+
+function statusPillForInvite(status) {
+  const cls = status === "ativo" ? "paid" : status === "usado" ? "" : "open";
+  return `<span class="pill ${cls}">${escapeHtml(status)}</span>`;
 }
 
 async function adminUserAction(id, action) {
@@ -834,6 +994,84 @@ async function toggleUserFeature(id, key, enabled) {
     showToast(error.message || "Nao foi possivel alterar a feature.");
     await loadAdminUsers();
   }
+}
+
+async function submitInvite(event) {
+  event.preventDefault();
+  try {
+    const data = await readJson(
+      await fetch(
+        "/api/admin/invites",
+        postOptions({
+          email: els["invite-email"].value,
+          expiresInDays: Number(els["invite-days"].value || 7),
+        })
+      )
+    );
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.link);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    if (!copied) {
+      window.prompt("Copie o link do convite:", data.link);
+    }
+    els["invite-form"].reset();
+    els["invite-days"].value = "7";
+    showToast(copied ? "Convite criado e link copiado." : "Convite criado.");
+    await loadAdminInvites();
+    await loadAuditEvents();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel criar o convite.");
+  }
+}
+
+async function revokeInvite(id) {
+  if (!window.confirm("Revogar este convite?")) return;
+  try {
+    await readJson(await fetch(`/api/admin/invites/${id}/revoke`, postOptions({})));
+    showToast("Convite revogado.");
+    await loadAdminInvites();
+    await loadAuditEvents();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel revogar o convite.");
+  }
+}
+
+async function downloadBackup() {
+  try {
+    const response = await fetch("/api/admin/backup", { headers: authHeaders() });
+    if (!response.ok) {
+      await readJson(response);
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `financeiro-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Backup baixado.");
+    await loadAuditEvents();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel baixar o backup.");
+  }
+}
+
+function switchAdminTab(tab) {
+  state.adminTab = tab || "users";
+  document.querySelectorAll("[data-admin-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.adminTab === state.adminTab);
+  });
+  document.querySelectorAll(".admin-pane").forEach((pane) => pane.classList.remove("active"));
+  document.getElementById(`admin-${state.adminTab}-pane`)?.classList.add("active");
 }
 
 function openTextDialog(title, label, initialValue, onSave) {
@@ -986,7 +1224,8 @@ function switchView(view) {
   document.getElementById(`${view}-view`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   if (view === "admin") {
-    loadAdminUsers();
+    switchAdminTab(state.adminTab);
+    loadAdminData();
   }
   requestAnimationFrame(drawCharts);
 }
@@ -1022,7 +1261,11 @@ async function readJson(response) {
 }
 
 function authHeaders() {
-  return state.session?.token ? { Authorization: `Bearer ${state.session.token}` } : {};
+  const headers = state.session?.token ? { Authorization: `Bearer ${state.session.token}` } : {};
+  if (state.inviteToken) {
+    headers["X-Invite-Token"] = state.inviteToken;
+  }
+  return headers;
 }
 
 function requireSupabase() {
