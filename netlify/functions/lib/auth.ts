@@ -9,6 +9,12 @@ const TOKEN_SECRET = process.env.AUTH_SECRET ?? "financeiro-local-dev-secret";
 export type AuthUser = {
   id: number;
   username: string;
+  displayName: string | null;
+};
+
+export type PublicUser = {
+  username: string;
+  displayName: string | null;
 };
 
 export function normalizeUsername(value: string): string {
@@ -25,6 +31,13 @@ export function hashPassword(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function publicUser(user: AuthUser): PublicUser {
+  return {
+    username: user.username,
+    displayName: user.displayName,
+  };
+}
+
 export async function loginUser(username: string, password: string): Promise<AuthUser> {
   await seedDefaultUserIfNeeded();
   const normalized = normalizeUsername(username);
@@ -34,6 +47,7 @@ export async function loginUser(username: string, password: string): Promise<Aut
       id: users.id,
       username: users.username,
       passwordHash: users.passwordHash,
+      displayName: users.displayName,
     })
     .from(users)
     .where(eq(users.username, normalized))
@@ -43,7 +57,7 @@ export async function loginUser(username: string, password: string): Promise<Aut
     throw new Error("Usuario ou senha invalidos.");
   }
 
-  return { id: row.id, username: row.username };
+  return { id: row.id, username: row.username, displayName: row.displayName };
 }
 
 export async function registerUser(username: string, password: string): Promise<AuthUser> {
@@ -67,7 +81,7 @@ export async function registerUser(username: string, password: string): Promise<
   const [created] = await db
     .insert(users)
     .values({ username: normalized, passwordHash: hashPassword(password) })
-    .returning({ id: users.id, username: users.username });
+    .returning({ id: users.id, username: users.username, displayName: users.displayName });
 
   await initializeDefaultsForUser(created.id, 0);
   return created;
@@ -105,7 +119,7 @@ export async function getUserFromRequest(req: Request): Promise<AuthUser> {
   }
 
   const [row] = await db
-    .select({ id: users.id, username: users.username })
+    .select({ id: users.id, username: users.username, displayName: users.displayName })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);

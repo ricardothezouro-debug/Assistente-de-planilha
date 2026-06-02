@@ -1,5 +1,5 @@
 import type { Config } from "@netlify/functions";
-import { issueToken, loginUser } from "./lib/auth.js";
+import { issueToken, loginUser, publicUser } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -11,7 +11,7 @@ export default async (req: Request): Promise<Response> => {
     const user = await loginUser(String(body.username ?? ""), String(body.password ?? ""));
     return Response.json({
       token: issueToken(user),
-      user: { username: user.username },
+      user: publicUser(user),
     });
   } catch (err) {
     console.error("api-login error:", err);

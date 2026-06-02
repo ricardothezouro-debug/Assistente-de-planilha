@@ -49,6 +49,14 @@ function bindElements() {
     "entry-status",
     "installments-field",
     "new-category-button",
+    "profile-form",
+    "profile-username",
+    "profile-display-name",
+    "password-form",
+    "password-current",
+    "password-new",
+    "password-confirm",
+    "profile-category-list",
     "edit-invested-button",
     "category-chart",
     "year-chart",
@@ -92,9 +100,14 @@ function bindEvents() {
     state.year = Number(els["year-filter"].value);
     loadState();
   });
-  els["entry-type"].addEventListener("change", syncInstallmentsVisibility);
+  els["entry-type"].addEventListener("change", syncEntryTypeFields);
   els["entry-form"].addEventListener("submit", submitEntry);
   els["new-category-button"].addEventListener("click", createCategory);
+  document.querySelectorAll("[data-create-category]").forEach((button) => {
+    button.addEventListener("click", createCategory);
+  });
+  els["profile-form"].addEventListener("submit", submitProfile);
+  els["password-form"].addEventListener("submit", submitPassword);
   els["edit-invested-button"].addEventListener("click", editInitialInvested);
   els["text-cancel-button"].addEventListener("click", () => els["text-dialog"].close());
   window.addEventListener("resize", debounce(drawCharts, 120));
@@ -112,6 +125,9 @@ async function loadState() {
     });
     const data = await readJson(response);
     state.data = data;
+    if (data.user) {
+      updateSessionUser(data.user);
+    }
     state.year = data.selectedYear;
     state.month = data.selectedMonth;
     render();
@@ -162,6 +178,16 @@ function saveSession(session) {
   localStorage.setItem("financeiro-session", JSON.stringify(session));
 }
 
+function updateSessionUser(user) {
+  if (!state.session) return;
+  state.session = {
+    ...state.session,
+    user,
+  };
+  localStorage.setItem("financeiro-session", JSON.stringify(state.session));
+  renderAuthState();
+}
+
 function logout() {
   state.session = null;
   state.data = null;
@@ -174,7 +200,8 @@ function renderAuthState() {
   els["auth-shell"].classList.toggle("hidden", isLoggedIn);
   els["app-shell"].classList.toggle("hidden", !isLoggedIn);
   if (isLoggedIn) {
-    els["current-user"].textContent = state.session.user?.username || "Usuario";
+    const user = state.session.user ?? {};
+    els["current-user"].textContent = user.displayName || user.username || "Usuario";
   }
 }
 
@@ -191,6 +218,7 @@ function render() {
   fillFormOptions();
   renderSummary();
   renderTables();
+  renderProfile();
   drawCharts();
 }
 
@@ -208,11 +236,11 @@ function fillFormOptions() {
   const data = state.data;
   fillSelect(els["entry-type"], data.entryTypes, els["entry-type"].value || "Variavel");
   fillSelect(els["entry-category"], data.categories, els["entry-category"].value || "Outros");
-  fillSelect(els["entry-status"], data.statuses, els["entry-status"].value || "Auto");
+  syncStatusOptions();
   if (!els["entry-date"].value) {
     els["entry-date"].value = data.today;
   }
-  syncInstallmentsVisibility();
+  syncEntryTypeFields();
 }
 
 function fillSelect(select, values, preferred = "") {
@@ -228,10 +256,30 @@ function syncInstallmentsVisibility() {
   els["installments-field"].style.display = isInstallment ? "grid" : "none";
 }
 
+function syncStatusOptions() {
+  const current = els["entry-status"].value || "Auto";
+  const isIncome = els["entry-type"].value === "Recebido";
+  const values = [
+    { value: "Auto", label: "Auto" },
+    { value: "Pago", label: isIncome ? "Recebido" : "Pago" },
+    { value: "Nao pago", label: isIncome ? "Nao recebido" : "Nao pago" },
+  ];
+  els["entry-status"].innerHTML = values
+    .map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`)
+    .join("");
+  els["entry-status"].value = values.some((item) => item.value === current) ? current : "Auto";
+}
+
+function syncEntryTypeFields() {
+  syncInstallmentsVisibility();
+  syncStatusOptions();
+}
+
 function renderSummary() {
   const summary = state.data.summary;
   const metrics = [
     ["Recebido", summary.income.label, "good"],
+    ["A receber", summary.receivable_income.label, summary.receivable_income.cents > 0 ? "warn" : ""],
     ["Despesas", summary.expenses.label, summary.expenses.cents > 0 ? "bad" : ""],
     ["Em aberto", summary.open_expenses.label, summary.open_expenses.cents > 0 ? "warn" : ""],
     ["Sobra", summary.balance.label, summary.balance.cents >= 0 ? "good" : "bad"],
@@ -258,7 +306,7 @@ function renderDashboardRow(item) {
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.category)}</td>
       <td class="amount">${item.amount}</td>
-      <td>${statusPill(item.status)}</td>
+      <td>${statusPill(item.status, item.type)}</td>
     </tr>
   `;
 }
@@ -272,7 +320,7 @@ function renderOccurrenceRow(item) {
       <td>${escapeHtml(item.category)}</td>
       <td>${item.installment || "-"}</td>
       <td class="amount">${item.amount}</td>
-      <td>${statusPill(item.status)}</td>
+      <td>${statusPill(item.status, item.type)}</td>
       <td>
         <div class="row-actions">
           <button class="button compact ghost" type="button" onclick="toggleOccurrence(${item.id})">Status</button>
@@ -287,9 +335,16 @@ function emptyRow(columns) {
   return `<tr><td colspan="${columns}">Nenhum lancamento para este periodo.</td></tr>`;
 }
 
-function statusPill(status) {
+function statusPill(status, type) {
   const cls = status === "Pago" ? "paid" : "open";
-  return `<span class="pill ${cls}">${status}</span>`;
+  return `<span class="pill ${cls}">${displayStatus(status, type)}</span>`;
+}
+
+function displayStatus(status, type) {
+  if (type === "Recebido") {
+    return status === "Pago" ? "Recebido" : "Nao recebido";
+  }
+  return status;
 }
 
 async function submitEntry(event) {
@@ -321,7 +376,7 @@ function setFormDefaults() {
   els["entry-status"].value = "Auto";
   els["entry-date"].value = state.data.today;
   els["entry-installments"].value = "2";
-  syncInstallmentsVisibility();
+  syncEntryTypeFields();
 }
 
 async function toggleOccurrence(id) {
@@ -411,6 +466,98 @@ function editInitialInvested() {
     showToast("Investido inicial atualizado.");
     await loadState();
   });
+}
+
+function renderProfile() {
+  if (!state.data) return;
+  const user = state.session?.user ?? state.data.user ?? {};
+  els["profile-username"].value = user.username || "";
+  els["profile-display-name"].value = user.displayName || "";
+
+  const categories = state.data.categoryItems ?? state.data.categories.map((name) => ({
+    id: null,
+    name,
+    isDefault: false,
+  }));
+
+  els["profile-category-list"].innerHTML = categories
+    .map((category) => {
+      const badge = category.isDefault ? "Padrao" : "Criada";
+      const action = category.isDefault
+        ? `<span class="muted-text">Protegida</span>`
+        : `<button class="button compact ghost" type="button" onclick="deleteCategory(${category.id})">Remover</button>`;
+      return `
+        <div class="category-row">
+          <div>
+            <strong>${escapeHtml(category.name)}</strong>
+            <span>${badge}</span>
+          </div>
+          ${action}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function submitProfile(event) {
+  event.preventDefault();
+  try {
+    const data = await readJson(
+      await fetch("/api/profile", postOptions({ displayName: els["profile-display-name"].value }))
+    );
+    updateSessionUser(data.user);
+    showToast("Perfil atualizado.");
+    await loadState();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel atualizar o perfil.");
+  }
+}
+
+async function submitPassword(event) {
+  event.preventDefault();
+  const currentPassword = els["password-current"].value;
+  const newPassword = els["password-new"].value;
+  const confirmation = els["password-confirm"].value;
+
+  if (newPassword !== confirmation) {
+    showToast("As senhas novas nao conferem.");
+    return;
+  }
+
+  try {
+    await readJson(
+      await fetch("/api/profile/password", postOptions({ currentPassword, newPassword }))
+    );
+    els["password-form"].reset();
+    showToast("Senha alterada.");
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel alterar a senha.");
+  }
+}
+
+async function deleteCategory(id) {
+  if (!id) {
+    showToast("Categoria invalida.");
+    return;
+  }
+
+  const category = state.data.categoryItems.find((item) => item.id === id);
+  if (!category) {
+    showToast("Categoria nao encontrada.");
+    return;
+  }
+
+  if (!window.confirm(`Remover a categoria "${category.name}"?`)) {
+    return;
+  }
+
+  try {
+    await readJson(await fetch(`/api/categories/${id}/delete`, postOptions({})));
+    showToast("Categoria removida.");
+    await loadState();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel remover a categoria.");
+  }
 }
 
 function openTextDialog(title, label, initialValue, onSave) {
