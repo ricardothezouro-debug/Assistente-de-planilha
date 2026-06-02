@@ -157,6 +157,12 @@ export async function onRequest(context: Context): Promise<Response> {
 function serviceDb(env: Env) {
   assertEnv(env, "SUPABASE_URL");
   assertEnv(env, "SUPABASE_SERVICE_ROLE_KEY");
+  if (
+    env.SUPABASE_SERVICE_ROLE_KEY === env.SUPABASE_ANON_KEY ||
+    env.SUPABASE_SERVICE_ROLE_KEY.startsWith("sb_publishable_")
+  ) {
+    throw statusError("Configure SUPABASE_SERVICE_ROLE_KEY com a chave secreta service_role do Supabase.", 500);
+  }
   return new SupabaseRestClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
