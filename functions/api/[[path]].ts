@@ -280,7 +280,6 @@ async function getOrCreateAppUser(db: SupabaseClient, env: Env, authUser: Supaba
 }
 
 async function getState(db: SupabaseClient, user: AppUser, url: URL) {
-  await initializeDefaultsForUser(db, user.id, 0);
   const year = parseInt(url.searchParams.get("year") ?? String(ACTIVE_YEAR));
   const today = todayIso();
   const todayMonth = parseInt(today.slice(5, 7));
@@ -502,27 +501,90 @@ async function seedDefaultUserIfNeeded(db: SupabaseClient) {
     userId = created.id;
   }
 
-  await initializeDefaultsForUser(db, userId, INITIAL_INVESTED_CENTS);
-
   const seedLock = await maybeSingle<{ value: string }>(
     db.from("settings").select("value").eq("user_id", userId).eq("key", "seeded_initial_data").limit(1)
   );
   if (seedLock) return;
 
-  for (const entry of INITIAL_ENTRIES) {
-    await createEntry(db, userId, entry.type, entry.name, entry.amountCents, entry.category, entry.startDate, entry.installments);
+  await initializeDefaultsForUser(db, userId, INITIAL_INVESTED_CENTS);
+  if (!(await userHasEntries(db, userId))) {
+    await seedInitialEntriesForUser(db, userId);
   }
   await upsertSetting(db, userId, "seeded_initial_data", "1");
 }
 
 async function initializeDefaultsForUser(db: SupabaseClient, userId: number, initialInvestedCents = 0) {
-  for (const name of CATEGORIES) {
-    await checked(
-      db.from("categories").upsert({ user_id: userId, name }, { onConflict: "user_id,name", ignoreDuplicates: true })
-    );
+  await checked(
+    db
+      .from("categories")
+      .upsert(
+        CATEGORIES.map((name) => ({ user_id: userId, name })),
+        { onConflict: "user_id,name", ignoreDuplicates: true }
+      )
+  );
+  await checked(
+    db
+      .from("settings")
+      .upsert(
+        [
+          { user_id: userId, key: "active_year", value: String(ACTIVE_YEAR) },
+          { user_id: userId, key: "initial_invested_cents", value: String(initialInvestedCents) },
+        ],
+        { onConflict: "user_id,key", ignoreDuplicates: true }
+      )
+  );
+}
+
+async function seedInitialEntriesForUser(db: SupabaseClient, userId: number) {
+  const categoryMap = await getCategoryIdMap(db, userId);
+  const entryRows = INITIAL_ENTRIES.map((entry, index) => {
+    const categoryId = categoryMap.get(entry.category);
+    if (!categoryId) throw statusError(`Categoria invalida: ${entry.category}`, 400);
+    return {
+      user_id: userId,
+      type: entry.type,
+      name: entry.name,
+      total_amount_cents: entry.amountCents,
+      category_id: categoryId,
+      start_date: entry.startDate,
+      installments: entry.installments,
+      notes: `seed:${index}`,
+    };
+  });
+
+  const createdEntries = await checked<
+    {
+      id: number;
+      type: string;
+      name: string;
+      total_amount_cents: number;
+      category_id: number;
+      start_date: string;
+      installments: number;
+    }[]
+  >(
+    db
+      .from("entries")
+      .insert(entryRows)
+      .select("id,type,name,total_amount_cents,category_id,start_date,installments")
+  );
+
+  const occurrenceRows = createdEntries.flatMap((entry) =>
+    buildOccurrences(
+      userId,
+      entry.id,
+      entry.category_id,
+      entry.type,
+      entry.name,
+      entry.total_amount_cents,
+      entry.start_date,
+      entry.installments
+    )
+  );
+
+  if (occurrenceRows.length > 0) {
+    await checked(db.from("occurrences").insert(occurrenceRows));
   }
-  await ensureSetting(db, userId, "active_year", String(ACTIVE_YEAR));
-  await ensureSetting(db, userId, "initial_invested_cents", String(initialInvestedCents));
 }
 
 async function ensureSetting(db: SupabaseClient, userId: number, key: string, value: string) {
@@ -561,6 +623,20 @@ async function getCategoryId(db: SupabaseClient, userId: number, name: string) {
     db.from("categories").select("id").eq("user_id", userId).eq("name", name).limit(1)
   );
   return row?.id ?? null;
+}
+
+async function getCategoryIdMap(db: SupabaseClient, userId: number) {
+  const rows = await many<{ id: number; name: string }>(
+    db.from("categories").select("id,name").eq("user_id", userId)
+  );
+  return new Map(rows.map((row) => [row.name, row.id]));
+}
+
+async function userHasEntries(db: SupabaseClient, userId: number) {
+  const row = await maybeSingle<{ id: number }>(
+    db.from("entries").select("id").eq("user_id", userId).limit(1)
+  );
+  return Boolean(row);
 }
 
 async function createEntry(
