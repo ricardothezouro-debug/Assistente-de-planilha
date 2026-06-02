@@ -4,6 +4,8 @@ const state = {
   data: null,
   view: "dashboard",
   session: null,
+  passwordRecovery: false,
+  adminUsers: [],
 };
 
 const els = {};
@@ -34,8 +36,14 @@ function bindElements() {
     "register-email",
     "register-username",
     "register-password",
+    "reset-form",
+    "reset-password",
+    "reset-confirm",
+    "reset-cancel-button",
+    "auth-separator",
     "current-user",
     "logout-button",
+    "admin-nav-item",
     "month-filter",
     "year-filter",
     "refresh-button",
@@ -60,6 +68,8 @@ function bindElements() {
     "password-new",
     "password-confirm",
     "profile-category-list",
+    "admin-refresh-button",
+    "admin-user-rows",
     "edit-invested-button",
     "category-chart",
     "year-chart",
@@ -87,6 +97,13 @@ function bindEvents() {
   els["register-tab"].addEventListener("click", () => switchAuthMode("register"));
   els["login-form"].addEventListener("submit", submitLogin);
   els["register-form"].addEventListener("submit", submitRegister);
+  els["reset-form"].addEventListener("submit", submitPasswordRecovery);
+  els["reset-cancel-button"].addEventListener("click", () => {
+    state.passwordRecovery = false;
+    clearAuthUrl();
+    switchAuthMode("login");
+    renderAuthState();
+  });
   els["forgot-password-button"].addEventListener("click", resetPassword);
   els["google-login-button"].addEventListener("click", loginWithGoogle);
   els["logout-button"].addEventListener("click", logout);
@@ -113,9 +130,17 @@ function bindEvents() {
   });
   els["profile-form"].addEventListener("submit", submitProfile);
   els["password-form"].addEventListener("submit", submitPassword);
+  els["admin-refresh-button"].addEventListener("click", loadAdminUsers);
   els["edit-invested-button"].addEventListener("click", editInitialInvested);
   els["text-cancel-button"].addEventListener("click", () => els["text-dialog"].close());
   window.addEventListener("resize", debounce(drawCharts, 120));
+
+  supabaseClient?.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY" && session) {
+      saveSupabaseSession(session, session.user);
+      showPasswordRecovery();
+    }
+  });
 }
 
 async function loadState() {
@@ -211,7 +236,7 @@ async function resetPassword() {
   try {
     const client = requireSupabase();
     const { error } = await client.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}?password_recovery=1`,
     });
     if (error) throw error;
     showToast("Enviamos o link de redefinicao para seu email.");
@@ -220,22 +245,87 @@ async function resetPassword() {
   }
 }
 
+async function submitPasswordRecovery(event) {
+  event.preventDefault();
+  const password = els["reset-password"].value;
+  const confirmation = els["reset-confirm"].value;
+
+  if (password !== confirmation) {
+    showToast("As senhas nao conferem.");
+    return;
+  }
+
+  try {
+    const client = requireSupabase();
+    const { error } = await client.auth.updateUser({ password });
+    if (error) throw error;
+
+    const { data } = await client.auth.getSession();
+    if (data.session) {
+      saveSupabaseSession(data.session, data.session.user);
+    }
+
+    els["reset-form"].reset();
+    state.passwordRecovery = false;
+    clearAuthUrl();
+    renderAuthState();
+    showToast("Senha redefinida.");
+    await loadState();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel redefinir a senha.");
+  }
+}
+
 async function bootSession() {
+  const isRecovery = isPasswordRecoveryUrl();
   await restoreSupabaseSession();
+  if (isRecovery && state.session) {
+    showPasswordRecovery();
+    return;
+  }
   if (!state.session) {
     restoreSession();
   }
   renderAuthState();
   if (state.session) {
+    if (!isRecovery && new URLSearchParams(window.location.search).has("code")) {
+      clearAuthUrl();
+    }
     await loadState();
   }
 }
 
 async function restoreSupabaseSession() {
   if (!supabaseClient) return;
+  const code = new URLSearchParams(window.location.search).get("code");
+  if (code) {
+    await supabaseClient.auth.exchangeCodeForSession(code);
+  }
   const { data, error } = await supabaseClient.auth.getSession();
   if (error || !data.session) return;
   saveSupabaseSession(data.session, data.session.user);
+}
+
+function isPasswordRecoveryUrl() {
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return (
+    search.get("password_recovery") === "1" ||
+    search.get("type") === "recovery" ||
+    hash.get("type") === "recovery"
+  );
+}
+
+function showPasswordRecovery() {
+  state.passwordRecovery = true;
+  renderAuthState();
+  switchAuthMode("reset");
+}
+
+function clearAuthUrl() {
+  if (window.location.search || window.location.hash) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
 }
 
 function restoreSession() {
@@ -287,20 +377,30 @@ async function logout() {
 
 function renderAuthState() {
   const isLoggedIn = Boolean(state.session?.token);
-  els["auth-shell"].classList.toggle("hidden", isLoggedIn);
-  els["app-shell"].classList.toggle("hidden", !isLoggedIn);
+  els["auth-shell"].classList.toggle("hidden", isLoggedIn && !state.passwordRecovery);
+  els["app-shell"].classList.toggle("hidden", !isLoggedIn || state.passwordRecovery);
   if (isLoggedIn) {
     const user = state.session.user ?? {};
     els["current-user"].textContent = user.displayName || user.username || "Usuario";
+    els["admin-nav-item"].classList.toggle("hidden", !user.isAdmin);
+    if (!user.isAdmin && state.view === "admin") {
+      switchView("dashboard");
+    }
+  } else {
+    els["admin-nav-item"].classList.add("hidden");
   }
 }
 
 function switchAuthMode(mode) {
   const isLogin = mode === "login";
+  const isReset = mode === "reset";
   els["login-tab"].classList.toggle("active", isLogin);
-  els["register-tab"].classList.toggle("active", !isLogin);
+  els["register-tab"].classList.toggle("active", mode === "register");
   els["login-form"].classList.toggle("active", isLogin);
-  els["register-form"].classList.toggle("active", !isLogin);
+  els["register-form"].classList.toggle("active", mode === "register");
+  els["reset-form"].classList.toggle("active", isReset);
+  els["auth-separator"].classList.toggle("hidden", isReset);
+  els["google-login-button"].classList.toggle("hidden", isReset);
 }
 
 function render() {
@@ -309,6 +409,7 @@ function render() {
   renderSummary();
   renderTables();
   renderProfile();
+  renderAdminUsers();
   drawCharts();
 }
 
@@ -661,6 +762,80 @@ async function deleteCategory(id) {
   }
 }
 
+async function loadAdminUsers() {
+  if (!state.session?.user?.isAdmin) return;
+  try {
+    const data = await readJson(await fetch("/api/admin/users", { headers: authHeaders() }));
+    state.adminUsers = data.users ?? [];
+    renderAdminUsers();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel carregar as contas.");
+  }
+}
+
+function renderAdminUsers() {
+  if (!els["admin-user-rows"]) return;
+  if (!state.session?.user?.isAdmin) {
+    els["admin-user-rows"].innerHTML = emptyRow(7);
+    return;
+  }
+
+  els["admin-user-rows"].innerHTML = state.adminUsers
+    .map((user) => {
+      const status = user.disabledAt ? "Desativada" : "Ativa";
+      const statusClass = user.disabledAt ? "open" : "paid";
+      const action = user.isCurrentUser
+        ? `<span class="muted-text">Conta atual</span>`
+        : user.disabledAt
+          ? `<button class="button compact ghost" type="button" onclick="adminUserAction(${user.id}, 'enable')">Reativar</button>`
+          : `<button class="button compact" type="button" onclick="adminUserAction(${user.id}, 'disable')">Desativar</button>`;
+      const aiChecked = user.features?.ai_chat ? "checked" : "";
+
+      return `
+        <tr>
+          <td>${escapeHtml(user.username)}</td>
+          <td>${escapeHtml(user.email || "-")}</td>
+          <td>${escapeHtml(user.displayName || "-")}</td>
+          <td>${user.isAdmin ? "Admin" : "Usuario"}</td>
+          <td><span class="pill ${statusClass}">${status}</span></td>
+          <td>
+            <label class="toggle-cell">
+              <input type="checkbox" ${aiChecked} onchange="toggleUserFeature(${user.id}, 'ai_chat', this.checked)" />
+              <span>IA</span>
+            </label>
+          </td>
+          <td>${action}</td>
+        </tr>
+      `;
+    })
+    .join("") || emptyRow(7);
+}
+
+async function adminUserAction(id, action) {
+  const label = action === "disable" ? "desativar" : "reativar";
+  if (action === "disable" && !window.confirm(`Tem certeza que quer ${label} esta conta?`)) {
+    return;
+  }
+
+  try {
+    await readJson(await fetch(`/api/admin/users/${id}`, postOptions({ action })));
+    showToast(action === "disable" ? "Conta desativada." : "Conta reativada.");
+    await loadAdminUsers();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel atualizar a conta.");
+  }
+}
+
+async function toggleUserFeature(id, key, enabled) {
+  try {
+    await readJson(await fetch(`/api/admin/users/${id}`, postOptions({ action: "feature", key, enabled })));
+    await loadAdminUsers();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel alterar a feature.");
+    await loadAdminUsers();
+  }
+}
+
 function openTextDialog(title, label, initialValue, onSave) {
   els["text-dialog-title"].textContent = title;
   els["text-dialog-label"].textContent = label;
@@ -802,10 +977,17 @@ function drawEmpty(ctx, width, height, label) {
 }
 
 function switchView(view) {
+  if (view === "admin" && !state.session?.user?.isAdmin) {
+    showToast("Acesso de admin necessario.");
+    return;
+  }
   state.view = view;
   document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
   document.getElementById(`${view}-view`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+  if (view === "admin") {
+    loadAdminUsers();
+  }
   requestAnimationFrame(drawCharts);
 }
 

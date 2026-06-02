@@ -31,7 +31,7 @@ export default async (req: Request): Promise<Response> => {
       .where(eq(users.id, user.id))
       .returning({ id: users.id, username: users.username, displayName: users.displayName });
 
-    return Response.json({ user: publicUser(updated) });
+    return Response.json({ user: publicUser({ ...user, displayName: updated.displayName }) });
   } catch (err) {
     console.error("api-profile error:", err);
     return Response.json({ error: String(err) }, { status: 400 });
