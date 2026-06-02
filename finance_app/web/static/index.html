@@ -51,7 +51,20 @@
           <button class="button primary" type="submit">Criar conta</button>
         </form>
 
-        <div class="auth-separator"><span>ou</span></div>
+        <form class="auth-form" id="reset-form">
+          <label>
+            Nova senha
+            <input id="reset-password" type="password" autocomplete="new-password" required />
+          </label>
+          <label>
+            Confirmar nova senha
+            <input id="reset-confirm" type="password" autocomplete="new-password" required />
+          </label>
+          <button class="button primary" type="submit">Redefinir senha</button>
+          <button class="button ghost" id="reset-cancel-button" type="button">Voltar ao login</button>
+        </form>
+
+        <div class="auth-separator" id="auth-separator"><span>ou</span></div>
         <button class="button ghost" id="google-login-button" type="button">Entrar com Google</button>
       </div>
     </section>
@@ -71,6 +84,7 @@
           <button class="nav-item" data-view="launch">Lancamentos</button>
           <button class="nav-item" data-view="charts">Graficos</button>
           <button class="nav-item" data-view="profile">Perfil</button>
+          <button class="nav-item hidden" id="admin-nav-item" data-view="admin">Admin</button>
         </nav>
 
         <div class="side-note">
@@ -308,6 +322,34 @@
               <div class="category-list" id="profile-category-list"></div>
             </section>
           </div>
+        </section>
+
+        <section class="view" id="admin-view">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Admin</p>
+                <h2>Contas do app</h2>
+              </div>
+              <button class="button compact" id="admin-refresh-button" type="button">Atualizar</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Usuario</th>
+                    <th>Email</th>
+                    <th>Nome</th>
+                    <th>Perfil</th>
+                    <th>Status</th>
+                    <th>IA chat</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="admin-user-rows"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </main>
     </div>

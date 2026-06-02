@@ -1,14 +1,19 @@
-import { pgTable, serial, text, integer, timestamp, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, index, uniqueIndex, primaryKey, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   supabaseUserId: text("supabase_user_id"),
+  email: text("email"),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name"),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  disabledAt: timestamp("disabled_at"),
+  featureFlags: text("feature_flags").notNull().default("{}"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("idx_users_supabase_user_id").on(table.supabaseUserId),
+  uniqueIndex("idx_users_email").on(table.email),
 ]);
 
 export const settings = pgTable(

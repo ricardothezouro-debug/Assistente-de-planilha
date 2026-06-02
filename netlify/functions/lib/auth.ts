@@ -1,5 +1,5 @@
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
-import { sql, eq } from "drizzle-orm";
+import { and, sql, eq } from "drizzle-orm";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { db } from "../../../db/index.js";
 import { users } from "../../../db/schema.js";
@@ -8,17 +8,26 @@ import { supabaseAuth } from "./supabase.js";
 
 const TOKEN_SECRET = process.env.AUTH_SECRET ?? "financeiro-local-dev-secret";
 const LEGACY_OWNER_EMAIL = (process.env.LEGACY_OWNER_EMAIL ?? "").trim().toLowerCase();
+export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "gamoxkun@gmail.com").trim().toLowerCase();
+
+export type FeatureFlags = Record<string, boolean>;
 
 export type AuthUser = {
   id: number;
   username: string;
+  email: string | null;
   displayName: string | null;
+  isAdmin: boolean;
+  disabledAt: Date | null;
+  features: FeatureFlags;
 };
 
 export type PublicUser = {
   username: string;
   displayName: string | null;
-  email?: string | null;
+  email: string | null;
+  isAdmin: boolean;
+  features: FeatureFlags;
 };
 
 export function normalizeUsername(value: string): string {
@@ -39,6 +48,9 @@ export function publicUser(user: AuthUser): PublicUser {
   return {
     username: user.username,
     displayName: user.displayName,
+    email: user.email,
+    isAdmin: user.isAdmin,
+    features: user.features,
   };
 }
 
@@ -54,8 +66,12 @@ export async function loginUser(username: string, password: string): Promise<Aut
     .select({
       id: users.id,
       username: users.username,
+      email: users.email,
       passwordHash: users.passwordHash,
       displayName: users.displayName,
+      isAdmin: users.isAdmin,
+      disabledAt: users.disabledAt,
+      featureFlags: users.featureFlags,
     })
     .from(users)
     .where(eq(users.username, normalized))
@@ -65,7 +81,7 @@ export async function loginUser(username: string, password: string): Promise<Aut
     throw new Error("Usuario ou senha invalidos.");
   }
 
-  return { id: row.id, username: row.username, displayName: row.displayName };
+  return authUserFromRow(row);
 }
 
 export async function registerUser(username: string, password: string): Promise<AuthUser> {
@@ -89,10 +105,10 @@ export async function registerUser(username: string, password: string): Promise<
   const [created] = await db
     .insert(users)
     .values({ username: normalized, passwordHash: hashPassword(password) })
-    .returning({ id: users.id, username: users.username, displayName: users.displayName });
+    .returning(authUserSelect());
 
   await initializeDefaultsForUser(created.id, 0);
-  return created;
+  return authUserFromRow(created);
 }
 
 export function issueToken(user: AuthUser): string {
@@ -136,24 +152,58 @@ async function getOrCreateAppUser(authUser: SupabaseUser): Promise<AuthUser> {
   );
 
   const [linked] = await db
-    .select({ id: users.id, username: users.username, displayName: users.displayName })
+    .select(authUserSelect())
     .from(users)
     .where(eq(users.supabaseUserId, supabaseUserId))
     .limit(1);
 
-  if (linked) return linked;
+  if (linked) {
+    const updated = await syncSupabaseUserRow(linked.id, {
+      email,
+      displayName,
+      isAdmin: email === ADMIN_EMAIL,
+    });
+    return assertAccountActive(updated);
+  }
+
+  if (email) {
+    const [existingEmail] = await db
+      .select(authUserSelect())
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (existingEmail) {
+      const [updated] = await db
+        .update(users)
+        .set({
+          supabaseUserId,
+          isAdmin: existingEmail.isAdmin || email === ADMIN_EMAIL,
+          displayName: displayName || undefined,
+        })
+        .where(eq(users.id, existingEmail.id))
+        .returning(authUserSelect());
+
+      return assertAccountActive(authUserFromRow(updated));
+    }
+  }
 
   const legacyOwnerEmail = LEGACY_OWNER_EMAIL;
   if (legacyOwnerEmail && email === legacyOwnerEmail) {
     const [legacy] = await db
       .update(users)
-      .set({ supabaseUserId, displayName: displayName || null })
-      .where(eq(users.username, DEFAULT_USERNAME))
-      .returning({ id: users.id, username: users.username, displayName: users.displayName });
+      .set({
+        supabaseUserId,
+        email: email || null,
+        displayName: displayName || null,
+        isAdmin: email === ADMIN_EMAIL,
+      })
+      .where(and(eq(users.username, DEFAULT_USERNAME), sql`${users.supabaseUserId} IS NULL`))
+      .returning(authUserSelect());
 
     if (legacy) {
       await initializeDefaultsForUser(legacy.id, 0);
-      return legacy;
+      return assertAccountActive(authUserFromRow(legacy));
     }
   }
 
@@ -163,13 +213,32 @@ async function getOrCreateAppUser(authUser: SupabaseUser): Promise<AuthUser> {
     .values({
       username,
       supabaseUserId,
+      email: email || null,
       passwordHash: "supabase-auth",
       displayName: displayName || null,
+      isAdmin: email === ADMIN_EMAIL,
     })
-    .returning({ id: users.id, username: users.username, displayName: users.displayName });
+    .returning(authUserSelect());
 
   await initializeDefaultsForUser(created.id, 0);
-  return created;
+  return assertAccountActive(authUserFromRow(created));
+}
+
+async function syncSupabaseUserRow(
+  id: number,
+  input: { email: string; displayName: string; isAdmin: boolean }
+): Promise<AuthUser> {
+  const [updated] = await db
+    .update(users)
+    .set({
+      email: input.email || null,
+      isAdmin: input.isAdmin,
+      displayName: input.displayName || undefined,
+    })
+    .where(eq(users.id, id))
+    .returning(authUserSelect());
+
+  return authUserFromRow(updated);
 }
 
 async function nextAvailableUsername(base: string): Promise<string> {
@@ -222,7 +291,7 @@ async function getUserFromLegacyToken(token: string): Promise<AuthUser> {
   }
 
   const [row] = await db
-    .select({ id: users.id, username: users.username, displayName: users.displayName })
+    .select(authUserSelect())
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
@@ -231,7 +300,65 @@ async function getUserFromLegacyToken(token: string): Promise<AuthUser> {
     throw new Error("Sessao invalida.");
   }
 
-  return row;
+  return assertAccountActive(authUserFromRow(row));
+}
+
+export function requireAdmin(user: AuthUser): void {
+  if (!user.isAdmin) {
+    throw new Error("Acesso de admin necessario.");
+  }
+}
+
+function authUserSelect() {
+  return {
+    id: users.id,
+    username: users.username,
+    email: users.email,
+    displayName: users.displayName,
+    isAdmin: users.isAdmin,
+    disabledAt: users.disabledAt,
+    featureFlags: users.featureFlags,
+  };
+}
+
+function authUserFromRow(row: {
+  id: number;
+  username: string;
+  email: string | null;
+  displayName: string | null;
+  isAdmin: boolean;
+  disabledAt: Date | null;
+  featureFlags: string;
+}): AuthUser {
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    displayName: row.displayName,
+    isAdmin: row.isAdmin,
+    disabledAt: row.disabledAt,
+    features: parseFeatureFlags(row.featureFlags),
+  };
+}
+
+function assertAccountActive(user: AuthUser): AuthUser {
+  if (user.disabledAt) {
+    throw new Error("Conta desativada pelo admin.");
+  }
+  return user;
+}
+
+export function parseFeatureFlags(value: string | null): FeatureFlags {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, enabled]) => [key, Boolean(enabled)])
+    );
+  } catch {
+    return {};
+  }
 }
 
 function signPayload(payload: string): string {
