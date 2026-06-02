@@ -6,17 +6,19 @@ import {
   computeMonthlySummaryFromRows,
   computeYearInvested,
   computeYearlyTotals,
-  getAllCategories,
+  getCategoryItems,
   getInitialInvestedCents,
   listOccurrences,
   serializeOccurrences,
 } from "./lib/finance.js";
 import { todayIso } from "./lib/dates.js";
-import { getUserFromRequest } from "./lib/auth.js";
+import { getUserFromRequest, publicUser } from "./lib/auth.js";
+import { initializeDefaultsForUser } from "./lib/seed.js";
 
 export default async (req: Request): Promise<Response> => {
   try {
     const user = await getUserFromRequest(req);
+    await initializeDefaultsForUser(user.id, 0);
 
     const url = new URL(req.url);
     const year = parseInt(url.searchParams.get("year") ?? String(ACTIVE_YEAR));
@@ -27,12 +29,12 @@ export default async (req: Request): Promise<Response> => {
       url.searchParams.get("month") ?? String(todayYear === ACTIVE_YEAR ? todayMonth : 1)
     );
 
-    const [occurrenceRows, categoryTotals, yearlyTotals, allCategories, initialInvested] =
+    const [occurrenceRows, categoryTotals, yearlyTotals, categoryItems, initialInvested] =
       await Promise.all([
         listOccurrences(user.id, year, month),
         computeMonthlyCategories(user.id, year, month),
         computeYearlyTotals(user.id, year),
-        getAllCategories(user.id),
+        getCategoryItems(user.id),
         getInitialInvestedCents(user.id),
       ]);
 
@@ -47,7 +49,8 @@ export default async (req: Request): Promise<Response> => {
       entryTypes: [...ENTRY_TYPES],
       statuses: ["Auto", "Pago", "Nao pago"],
       monthNames: [...MONTH_NAMES],
-      categories: allCategories,
+      categories: categoryItems.map((category) => category.name),
+      categoryItems,
       occurrences: serializeOccurrences(occurrenceRows),
       summary: serializeMoneyMap(summary),
       categoryTotals: categoryTotals.map((row) => ({
@@ -56,6 +59,7 @@ export default async (req: Request): Promise<Response> => {
         total: formatCents(Number(row.total)),
       })),
       yearlyTotals,
+      user: publicUser(user),
     });
   } catch (err) {
     console.error("api-state error:", err);

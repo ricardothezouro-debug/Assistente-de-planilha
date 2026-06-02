@@ -62,6 +62,7 @@
           <button class="nav-item active" data-view="dashboard">Dashboard</button>
           <button class="nav-item" data-view="launch">Lancamentos</button>
           <button class="nav-item" data-view="charts">Graficos</button>
+          <button class="nav-item" data-view="profile">Perfil</button>
         </nav>
 
         <div class="side-note">
@@ -238,6 +239,65 @@
                 </div>
               </div>
               <canvas id="year-large-chart" height="360"></canvas>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="profile-view">
+          <div class="profile-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Conta</p>
+                  <h2>Perfil</h2>
+                </div>
+              </div>
+              <form id="profile-form" class="profile-form">
+                <label>
+                  Usuario
+                  <input id="profile-username" type="text" disabled />
+                </label>
+                <label>
+                  Nome na tela
+                  <input id="profile-display-name" type="text" maxlength="48" placeholder="Como quer aparecer no app" />
+                </label>
+                <button class="button primary" type="submit">Salvar perfil</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Seguranca</p>
+                  <h2>Senha</h2>
+                </div>
+              </div>
+              <form id="password-form" class="profile-form">
+                <label>
+                  Senha atual
+                  <input id="password-current" type="password" autocomplete="current-password" required />
+                </label>
+                <label>
+                  Nova senha
+                  <input id="password-new" type="password" autocomplete="new-password" required />
+                </label>
+                <label>
+                  Confirmar nova senha
+                  <input id="password-confirm" type="password" autocomplete="new-password" required />
+                </label>
+                <button class="button primary" type="submit">Alterar senha</button>
+              </form>
+            </section>
+
+            <section class="panel profile-wide">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Organizacao</p>
+                  <h2>Categorias</h2>
+                </div>
+                <button class="button compact" type="button" data-create-category="true">Nova categoria</button>
+              </div>
+              <div class="category-list" id="profile-category-list"></div>
             </section>
           </div>
         </section>

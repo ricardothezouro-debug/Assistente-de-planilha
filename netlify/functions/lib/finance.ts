@@ -3,6 +3,7 @@ import { db } from "../../../db/index.js";
 import { settings, categories, entries, occurrences } from "../../../db/schema.js";
 import {
   ACTIVE_YEAR,
+  CATEGORIES,
   ENTRY_FIXED,
   ENTRY_INSTALLMENT,
   ENTRY_INCOME,
@@ -30,6 +31,12 @@ export type OccurrenceRow = {
   installmentNumber: number | null;
   installmentTotal: number | null;
   status: string;
+};
+
+export type CategoryItem = {
+  id: number;
+  name: string;
+  isDefault: boolean;
 };
 
 export async function getInitialInvestedCents(userId: number): Promise<number> {
@@ -61,12 +68,21 @@ export async function getCategoryId(userId: number, name: string): Promise<numbe
 }
 
 export async function getAllCategories(userId: number): Promise<string[]> {
+  const rows = await getCategoryItems(userId);
+  return rows.map((r) => r.name);
+}
+
+export async function getCategoryItems(userId: number): Promise<CategoryItem[]> {
   const rows = await db
-    .select({ name: categories.name })
+    .select({ id: categories.id, name: categories.name })
     .from(categories)
     .where(eq(categories.userId, userId))
     .orderBy(asc(categories.id));
-  return rows.map((r) => r.name);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    isDefault: (CATEGORIES as readonly string[]).includes(r.name),
+  }));
 }
 
 export async function listOccurrences(userId: number, year: number, month: number): Promise<OccurrenceRow[]> {
@@ -96,7 +112,10 @@ export function computeMonthlySummaryFromRows(
   investedYear: number
 ): Record<string, number> {
   const income = rows
-    .filter((r) => r.type === ENTRY_INCOME)
+    .filter((r) => r.type === ENTRY_INCOME && r.status === STATUS_PAID)
+    .reduce((s, r) => s + r.amountCents, 0);
+  const receivableIncome = rows
+    .filter((r) => r.type === ENTRY_INCOME && r.status === STATUS_UNPAID)
     .reduce((s, r) => s + r.amountCents, 0);
   const expenses = rows
     .filter((r) => r.type !== ENTRY_INCOME)
@@ -114,6 +133,7 @@ export function computeMonthlySummaryFromRows(
   return {
     initial_invested: year === ACTIVE_YEAR ? initialInvested : 0,
     income,
+    receivable_income: receivableIncome,
     expenses,
     paid_expenses: paidExpenses,
     open_expenses: openExpenses,
@@ -175,7 +195,7 @@ export async function computeYearlyTotals(userId: number, year: number) {
   const rows = await db
     .select({
       month: occurrences.month,
-      income: sql<number>`SUM(CASE WHEN ${occurrences.type} = ${ENTRY_INCOME} THEN ${occurrences.amountCents} ELSE 0 END)`,
+      income: sql<number>`SUM(CASE WHEN ${occurrences.type} = ${ENTRY_INCOME} AND ${occurrences.status} = ${STATUS_PAID} THEN ${occurrences.amountCents} ELSE 0 END)`,
       expenses: sql<number>`SUM(CASE WHEN ${occurrences.type} != ${ENTRY_INCOME} THEN ${occurrences.amountCents} ELSE 0 END)`,
       invested: sql<number>`SUM(CASE WHEN ${occurrences.type} != ${ENTRY_INCOME} AND ${categories.name} = 'Investimento' THEN ${occurrences.amountCents} ELSE 0 END)`,
     })

@@ -355,7 +355,8 @@ select:focus {
 
 .dashboard-grid,
 .chart-layout,
-.launch-grid {
+.launch-grid,
+.profile-grid {
   display: grid;
   gap: 16px;
 }
@@ -368,6 +369,14 @@ select:focus {
 
 .launch-grid {
   grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.profile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-wide {
+  grid-column: 1 / -1;
 }
 
 .panel {
@@ -399,6 +408,42 @@ select:focus {
   display: grid;
   gap: 13px;
   padding: 0 16px 16px;
+}
+
+.profile-form {
+  display: grid;
+  gap: 13px;
+  padding: 0 16px 16px;
+}
+
+.category-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.category-row {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.category-row strong,
+.category-row span {
+  display: block;
+}
+
+.category-row span,
+.muted-text {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .inline-control select {
@@ -551,7 +596,8 @@ td {
   .summary-grid,
   .dashboard-grid,
   .chart-layout,
-  .launch-grid {
+  .launch-grid,
+  .profile-grid {
     grid-template-columns: 1fr;
   }
 }

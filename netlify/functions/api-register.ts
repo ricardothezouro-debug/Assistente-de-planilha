@@ -1,5 +1,5 @@
 import type { Config } from "@netlify/functions";
-import { issueToken, registerUser } from "./lib/auth.js";
+import { issueToken, publicUser, registerUser } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
@@ -12,7 +12,7 @@ export default async (req: Request): Promise<Response> => {
     return Response.json(
       {
         token: issueToken(user),
-        user: { username: user.username },
+        user: publicUser(user),
       },
       { status: 201 }
     );
