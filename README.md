@@ -101,6 +101,8 @@ npm run desktop:dev
 
 ## Uso rapido
 
+- No Netlify, acesse com `gamoxkun` / `ri1998`.
+- Novas contas podem ser criadas pela tela de login; cada usuario comeca com categorias padrao e planilha sem lancamentos.
 - Use o formulario da esquerda para lancar gastos, parcelas e recebidos.
 - Use Nova ao lado de Categoria para criar uma categoria personalizada.
 - Use Calendario ao lado de Data para escolher uma data clicando; ele abre no dia atual.

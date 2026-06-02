@@ -34,6 +34,59 @@ select {
   font: inherit;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  display: grid;
+  gap: 18px;
+  width: min(420px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 22px;
+  background: rgba(20, 24, 32, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.auth-tab {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.auth-tab.active {
+  border-color: rgba(45, 212, 191, 0.28);
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--text);
+}
+
+.auth-form {
+  display: none;
+  gap: 13px;
+}
+
+.auth-form.active {
+  display: grid;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
@@ -115,6 +168,21 @@ label {
 
 .side-note p {
   margin: 0;
+}
+
+.user-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.user-box span {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
 .signal {

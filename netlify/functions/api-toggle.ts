@@ -1,9 +1,10 @@
 import type { Config, Context } from "@netlify/functions";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { occurrences } from "../../db/schema.js";
 import { STATUS_PAID, STATUS_UNPAID } from "./lib/constants.js";
 import { todayIso } from "./lib/dates.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request, context: Context): Promise<Response> => {
   if (req.method !== "POST") {
@@ -16,10 +17,11 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   try {
+    const user = await getUserFromRequest(req);
     const [row] = await db
       .select({ status: occurrences.status })
       .from(occurrences)
-      .where(eq(occurrences.id, id))
+      .where(and(eq(occurrences.id, id), eq(occurrences.userId, user.id)))
       .limit(1);
 
     if (!row) {
@@ -34,7 +36,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
         status: newStatus,
         paidAt: newStatus === STATUS_PAID ? todayIso() : null,
       })
-      .where(eq(occurrences.id, id));
+      .where(and(eq(occurrences.id, id), eq(occurrences.userId, user.id)));
 
     return Response.json({ status: newStatus });
   } catch (err) {

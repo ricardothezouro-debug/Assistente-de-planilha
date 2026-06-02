@@ -11,12 +11,12 @@ import {
   listOccurrences,
   serializeOccurrences,
 } from "./lib/finance.js";
-import { seedIfNeeded } from "./lib/seed.js";
 import { todayIso } from "./lib/dates.js";
+import { getUserFromRequest } from "./lib/auth.js";
 
 export default async (req: Request): Promise<Response> => {
   try {
-    await seedIfNeeded();
+    const user = await getUserFromRequest(req);
 
     const url = new URL(req.url);
     const year = parseInt(url.searchParams.get("year") ?? String(ACTIVE_YEAR));
@@ -29,14 +29,14 @@ export default async (req: Request): Promise<Response> => {
 
     const [occurrenceRows, categoryTotals, yearlyTotals, allCategories, initialInvested] =
       await Promise.all([
-        listOccurrences(year, month),
-        computeMonthlyCategories(year, month),
-        computeYearlyTotals(year),
-        getAllCategories(),
-        getInitialInvestedCents(),
+        listOccurrences(user.id, year, month),
+        computeMonthlyCategories(user.id, year, month),
+        computeYearlyTotals(user.id, year),
+        getAllCategories(user.id),
+        getInitialInvestedCents(user.id),
       ]);
 
-    const investedYear = await computeYearInvested(year, initialInvested);
+    const investedYear = await computeYearInvested(user.id, year, initialInvested);
     const summary = computeMonthlySummaryFromRows(year, occurrenceRows, initialInvested, investedYear);
 
     return Response.json({

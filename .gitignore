@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 build/
+node_modules/
 .env
 desktop/.env
 data/*.db
