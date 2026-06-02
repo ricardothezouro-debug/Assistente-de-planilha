@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+build/
+.env
+desktop/.env
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/binaries/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Controle financeiro</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <strong>Financeiro</strong>
+            <span>Controle 2026</span>
+          </div>
+        </div>
+
+        <nav class="nav-stack" aria-label="Navegacao">
+          <button class="nav-item active" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="launch">Lancamentos</button>
+          <button class="nav-item" data-view="charts">Graficos</button>
+        </nav>
+
+        <div class="side-note">
+          <span class="signal"></span>
+          <p>Banco local SQLite ativo. Seus dados ficam nesta maquina.</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Visao mensal</p>
+            <h1 id="page-title">Maio 2026</h1>
+          </div>
+          <div class="filters">
+            <label>
+              Mes
+              <select id="month-filter"></select>
+            </label>
+            <label>
+              Ano
+              <input id="year-filter" type="number" min="2026" max="2035" />
+            </label>
+            <button class="button ghost" id="refresh-button" type="button">Atualizar</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard-view">
+          <div class="summary-grid" id="summary-grid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Mes atual</p>
+                  <h2>Gastos por categoria</h2>
+                </div>
+              </div>
+              <canvas id="category-chart" height="280"></canvas>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Ano</p>
+                  <h2>Recebido vs despesas</h2>
+                </div>
+              </div>
+              <canvas id="year-chart" height="280"></canvas>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Agenda</p>
+                <h2>Proximos lancamentos do mes</h2>
+              </div>
+              <button class="button compact" data-view-jump="launch" type="button">Novo lancamento</button>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Descricao</th>
+                    <th>Categoria</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-rows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="launch-view">
+          <div class="launch-grid">
+            <section class="panel form-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Entrada rapida</p>
+                  <h2>Novo lancamento</h2>
+                </div>
+              </div>
+
+              <form id="entry-form" class="entry-form">
+                <label>
+                  Tipo
+                  <select id="entry-type" name="type"></select>
+                </label>
+                <label>
+                  Descricao
+                  <input id="entry-name" name="name" type="text" placeholder="Ex: Mercado, Salario, Jogo" required />
+                </label>
+                <label>
+                  Valor
+                  <input id="entry-amount" name="amount" type="text" placeholder="R$ 0,00" required />
+                </label>
+                <label>
+                  Categoria
+                  <div class="inline-control">
+                    <select id="entry-category" name="category"></select>
+                    <button class="button square" id="new-category-button" type="button">+</button>
+                  </div>
+                </label>
+                <label>
+                  Data
+                  <input id="entry-date" name="date" type="date" required />
+                </label>
+                <label id="installments-field">
+                  Parcelas
+                  <input id="entry-installments" name="installments" type="number" min="2" max="120" value="2" />
+                </label>
+                <label>
+                  Status
+                  <select id="entry-status" name="status"></select>
+                </label>
+                <button class="button primary" type="submit">Lancar</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Registros</p>
+                  <h2>Lancamentos do mes</h2>
+                </div>
+                <button class="button ghost compact" id="edit-invested-button" type="button">Investido inicial</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Tipo</th>
+                      <th>Descricao</th>
+                      <th>Categoria</th>
+                      <th>Parcela</th>
+                      <th>Valor</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="occurrence-rows"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="charts-view">
+          <div class="chart-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Distribuicao</p>
+                  <h2>Categorias do mes</h2>
+                </div>
+              </div>
+              <canvas id="category-large-chart" height="360"></canvas>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Tendencia</p>
+                  <h2>Fluxo anual</h2>
+                </div>
+              </div>
+              <canvas id="year-large-chart" height="360"></canvas>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="action-dialog" class="modal">
+      <form method="dialog">
+        <h3 id="action-title">Remover</h3>
+        <p id="action-copy"></p>
+        <div class="modal-actions" id="action-options"></div>
+      </form>
+    </dialog>
+
+    <dialog id="text-dialog" class="modal">
+      <form method="dialog" id="text-dialog-form">
+        <h3 id="text-dialog-title">Editar</h3>
+        <label>
+          <span id="text-dialog-label">Valor</span>
+          <input id="text-dialog-input" type="text" />
+        </label>
+        <div class="modal-actions">
+          <button class="button ghost" value="cancel" type="button" id="text-cancel-button">Cancelar</button>
+          <button class="button primary" value="ok" type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
