@@ -1,5 +1,3 @@
-import { createClient, type SupabaseClient, type User as SupabaseAuthUser } from "@supabase/supabase-js";
-
 type Env = {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
@@ -11,6 +9,14 @@ type Env = {
 type Context = {
   request: Request;
   env: Env;
+};
+
+type SupabaseClient = SupabaseRestClient;
+
+type SupabaseAuthUser = {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
 };
 
 type AppUser = {
@@ -148,20 +154,23 @@ export async function onRequest(context: Context): Promise<Response> {
   }
 }
 
-function authDb(env: Env) {
-  assertEnv(env, "SUPABASE_URL");
-  assertEnv(env, "SUPABASE_ANON_KEY");
-  return createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
 function serviceDb(env: Env) {
   assertEnv(env, "SUPABASE_URL");
   assertEnv(env, "SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
+  return new SupabaseRestClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+async function getAuthUser(env: Env, token: string): Promise<SupabaseAuthUser> {
+  assertEnv(env, "SUPABASE_URL");
+  assertEnv(env, "SUPABASE_ANON_KEY");
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/user`, {
+    headers: {
+      apikey: env.SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+    },
   });
+  if (!response.ok) throw statusError("Sessao invalida.", 401);
+  return response.json();
 }
 
 async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient): Promise<AppUser> {
@@ -169,11 +178,10 @@ async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient
   const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
   if (!token) throw statusError("Login necessario.", 401);
 
-  const { data, error } = await authDb(env).auth.getUser(token);
-  if (error || !data.user) throw statusError("Sessao invalida.", 401);
+  const authUser = await getAuthUser(env, token);
 
   await seedDefaultUserIfNeeded(db);
-  const user = await getOrCreateAppUser(db, env, data.user);
+  const user = await getOrCreateAppUser(db, env, authUser);
   if (user.disabledAt) throw statusError("Conta desativada pelo admin.", 403);
   return user;
 }
@@ -909,6 +917,187 @@ function serializeMoneyMap(values: Record<string, number>) {
 
 function pad2(value: number) {
   return String(value).padStart(2, "0");
+}
+
+type SupabaseOperation = "select" | "insert" | "update" | "upsert" | "delete";
+
+class SupabaseRestClient {
+  private readonly baseUrl: string;
+  private readonly key: string;
+
+  constructor(baseUrl: string, key: string) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.key = key;
+  }
+
+  from(table: string) {
+    return new SupabaseRestQuery(this.baseUrl, this.key, table);
+  }
+}
+
+class SupabaseRestQuery {
+  private operation: SupabaseOperation | null = null;
+  private body: unknown = undefined;
+  private selectColumns: string | null = null;
+  private readonly filters: string[] = [];
+  private readonly orderParts: string[] = [];
+  private limitValue: number | null = null;
+  private onConflict: string | null = null;
+  private ignoreDuplicates = false;
+
+  constructor(
+    private readonly baseUrl: string,
+    private readonly key: string,
+    private readonly table: string
+  ) {}
+
+  select(columns: string) {
+    if (!this.operation) this.operation = "select";
+    this.selectColumns = columns;
+    return this;
+  }
+
+  insert(body: unknown) {
+    this.operation = "insert";
+    this.body = body;
+    return this;
+  }
+
+  update(body: unknown) {
+    this.operation = "update";
+    this.body = body;
+    return this;
+  }
+
+  upsert(body: unknown, options: { onConflict?: string; ignoreDuplicates?: boolean } = {}) {
+    this.operation = "upsert";
+    this.body = body;
+    this.onConflict = options.onConflict ?? null;
+    this.ignoreDuplicates = Boolean(options.ignoreDuplicates);
+    return this;
+  }
+
+  delete() {
+    this.operation = "delete";
+    return this;
+  }
+
+  eq(column: string, value: unknown) {
+    return this.filter(column, "eq", value);
+  }
+
+  gte(column: string, value: unknown) {
+    return this.filter(column, "gte", value);
+  }
+
+  ilike(column: string, value: unknown) {
+    return this.filter(column, "ilike", value);
+  }
+
+  is(column: string, value: unknown) {
+    return this.filter(column, "is", value === null ? "null" : value);
+  }
+
+  limit(value: number) {
+    this.limitValue = value;
+    return this;
+  }
+
+  order(column: string, options: { ascending?: boolean } = {}) {
+    this.orderParts.push(`${column}.${options.ascending === false ? "desc" : "asc"}`);
+    return this;
+  }
+
+  async maybeSingle() {
+    const result = await this.execute();
+    if (result.error) return result;
+    if (Array.isArray(result.data)) return { data: result.data[0] ?? null, error: null };
+    return result;
+  }
+
+  async single() {
+    const result = await this.execute();
+    if (result.error) return result;
+    if (Array.isArray(result.data)) {
+      const data = result.data[0] ?? null;
+      return { data, error: data ? null : statusError("Registro nao encontrado.", 404) };
+    }
+    return result;
+  }
+
+  then<TResult1 = { data: unknown; error: unknown }, TResult2 = never>(
+    onfulfilled?: ((value: { data: unknown; error: unknown }) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ) {
+    return this.execute().then(onfulfilled, onrejected);
+  }
+
+  private filter(column: string, operator: string, value: unknown) {
+    this.filters.push(`${encodeURIComponent(column)}=${operator}.${encodeFilterValue(value)}`);
+    return this;
+  }
+
+  private async execute() {
+    const operation = this.operation ?? "select";
+    const search = new URLSearchParams();
+    if (this.selectColumns) search.set("select", this.selectColumns);
+    if (this.limitValue !== null) search.set("limit", String(this.limitValue));
+    if (this.orderParts.length > 0) search.set("order", this.orderParts.join(","));
+    if (this.onConflict) search.set("on_conflict", this.onConflict);
+
+    const filterQuery = this.filters.length > 0 ? `&${this.filters.join("&")}` : "";
+    const query = search.toString();
+    const url = `${this.baseUrl}/rest/v1/${encodeURIComponent(this.table)}${query || filterQuery ? "?" : ""}${query}${filterQuery}`;
+
+    const headers = new Headers({
+      apikey: this.key,
+      Authorization: `Bearer ${this.key}`,
+      "Content-Type": "application/json",
+    });
+
+    if ((operation === "insert" || operation === "update" || operation === "upsert") && this.selectColumns) {
+      headers.set("Prefer", "return=representation");
+    }
+    if (operation === "upsert") {
+      const resolution = this.ignoreDuplicates ? "resolution=ignore-duplicates" : "resolution=merge-duplicates";
+      const current = headers.get("Prefer");
+      headers.set("Prefer", current ? `${current},${resolution}` : resolution);
+    }
+
+    const init: RequestInit = { headers, method: methodForOperation(operation) };
+    if (operation === "insert" || operation === "update" || operation === "upsert") {
+      init.body = JSON.stringify(this.body);
+    }
+
+    const response = await fetch(url, init);
+    const text = await response.text();
+    const data = text ? parseJson(text) : null;
+
+    if (!response.ok) {
+      const message = data?.message || data?.error_description || data?.error || response.statusText;
+      return { data: null, error: statusError(message, response.status) };
+    }
+    return { data, error: null };
+  }
+}
+
+function methodForOperation(operation: SupabaseOperation) {
+  if (operation === "select") return "GET";
+  if (operation === "update") return "PATCH";
+  if (operation === "delete") return "DELETE";
+  return "POST";
+}
+
+function encodeFilterValue(value: unknown) {
+  return encodeURIComponent(String(value));
+}
+
+function parseJson(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 async function checked<T = unknown>(query: any) {
