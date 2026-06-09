@@ -50,7 +50,27 @@
             Senha
             <input id="register-password" type="password" autocomplete="new-password" required />
           </label>
-          <button class="button primary" type="submit">Criar conta</button>
+          <label>
+            Digite a senha novamente
+            <input id="register-confirm" type="password" autocomplete="new-password" required />
+          </label>
+          <div class="password-meter" aria-live="polite">
+            <div class="password-bar">
+              <span id="password-strength-fill"></span>
+            </div>
+            <div class="password-strength-row">
+              <strong id="password-strength-label">Senha muito fraca</strong>
+              <span id="password-match-label">Confirme a senha</span>
+            </div>
+            <ul class="password-rules">
+              <li id="password-rule-length">No minimo 8 caracteres</li>
+              <li id="password-rule-lower">Letra minuscula</li>
+              <li id="password-rule-upper">Letra maiuscula</li>
+              <li id="password-rule-number">Numero</li>
+              <li id="password-rule-symbol">Simbolo</li>
+            </ul>
+          </div>
+          <button class="button primary" id="register-submit-button" type="submit" disabled>Criar conta</button>
         </form>
 
         <form class="auth-form" id="reset-form">
@@ -356,7 +376,7 @@
                       <th>Status</th>
                       <th>Convite</th>
                       <th>IA chat</th>
-                      <th></th>
+                      <th>Acoes</th>
                     </tr>
                   </thead>
                   <tbody id="admin-user-rows"></tbody>
@@ -443,6 +463,19 @@
         <div class="modal-actions">
           <button class="button ghost" value="cancel" type="button" id="text-cancel-button">Cancelar</button>
           <button class="button primary" value="ok" type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="account-success-dialog" class="modal">
+      <form method="dialog">
+        <p class="eyebrow">Conta criada</p>
+        <h3>Conta criada com sucesso</h3>
+        <p id="account-success-message">
+          Agora entre com seu email e senha para ativar sua planilha.
+        </p>
+        <div class="modal-actions">
+          <button class="button primary" id="account-success-ok-button" type="button">Ok, ir para login</button>
         </div>
       </form>
     </dialog>

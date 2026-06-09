@@ -44,6 +44,16 @@ function bindElements() {
     "register-email",
     "register-username",
     "register-password",
+    "register-confirm",
+    "register-submit-button",
+    "password-strength-fill",
+    "password-strength-label",
+    "password-match-label",
+    "password-rule-length",
+    "password-rule-lower",
+    "password-rule-upper",
+    "password-rule-number",
+    "password-rule-symbol",
     "reset-form",
     "reset-password",
     "reset-confirm",
@@ -100,6 +110,9 @@ function bindElements() {
     "text-dialog-label",
     "text-dialog-input",
     "text-cancel-button",
+    "account-success-dialog",
+    "account-success-message",
+    "account-success-ok-button",
   ];
   ids.forEach((id) => {
     els[id] = document.getElementById(id);
@@ -111,6 +124,8 @@ function bindEvents() {
   els["register-tab"].addEventListener("click", () => switchAuthMode("register"));
   els["login-form"].addEventListener("submit", submitLogin);
   els["register-form"].addEventListener("submit", submitRegister);
+  els["register-password"].addEventListener("input", renderRegisterPasswordStrength);
+  els["register-confirm"].addEventListener("input", renderRegisterPasswordStrength);
   els["reset-form"].addEventListener("submit", submitPasswordRecovery);
   els["reset-cancel-button"].addEventListener("click", () => {
     state.passwordRecovery = false;
@@ -152,7 +167,14 @@ function bindEvents() {
   });
   els["edit-invested-button"].addEventListener("click", editInitialInvested);
   els["text-cancel-button"].addEventListener("click", () => els["text-dialog"].close());
+  els["account-success-ok-button"].addEventListener("click", () => {
+    els["account-success-dialog"].close();
+    switchAuthMode("login");
+    renderAuthState();
+    els["login-password"].focus();
+  });
   window.addEventListener("resize", debounce(drawCharts, 120));
+  renderRegisterPasswordStrength();
 
   supabaseClient?.auth.onAuthStateChange((event, session) => {
     if (event === "PASSWORD_RECOVERY" && session) {
@@ -212,26 +234,103 @@ async function submitRegister(event) {
   }
   try {
     const client = requireSupabase();
+    const email = els["register-email"].value.trim();
     const username = els["register-username"].value.trim();
+    const password = els["register-password"].value;
+    const confirmation = els["register-confirm"].value;
+    const strength = evaluatePassword(password);
+    if (!strength.valid) {
+      showToast("Use uma senha mais forte antes de criar a conta.");
+      renderRegisterPasswordStrength();
+      return;
+    }
+    if (password !== confirmation) {
+      showToast("As senhas digitadas nao conferem.");
+      renderRegisterPasswordStrength();
+      return;
+    }
     const { data, error } = await client.auth.signUp({
-      email: els["register-email"].value.trim(),
-      password: els["register-password"].value,
+      email,
+      password,
       options: {
         data: username ? { username } : {},
         emailRedirectTo: inviteRedirectUrl(),
       },
     });
     if (error) throw error;
+    if (data.session) {
+      await client.auth.signOut();
+      state.session = null;
+      localStorage.removeItem("financeiro-session");
+    }
+    els["login-username"].value = email;
+    els["login-password"].value = "";
+    els["register-form"].reset();
+    els["register-email"].value = state.invitePreview?.email || email;
+    renderRegisterPasswordStrength();
     if (!data.session) {
-      showToast("Conta criada. Confira seu email para confirmar o acesso.");
+      showAccountCreatedDialog("Conta criada. Se o Supabase pedir confirmacao, confirme pelo email antes de entrar.");
       return;
     }
-    saveSupabaseSession(data.session, data.user);
     renderAuthState();
-    showToast("Conta criada.");
-    await loadState();
+    showAccountCreatedDialog("Conta criada. Entre com seu email e senha para ativar sua planilha.");
   } catch (error) {
     showToast(error.message || "Nao foi possivel criar a conta.");
+  }
+}
+
+function evaluatePassword(password) {
+  const rules = {
+    length: password.length >= 8,
+    lower: /[a-z]/.test(password),
+    upper: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+    symbol: /[^A-Za-z0-9]/.test(password),
+  };
+  const score = Object.values(rules).filter(Boolean).length;
+  return {
+    rules,
+    score,
+    valid: score === 5,
+    label: score <= 2 ? "Senha fraca" : score <= 4 ? "Senha media" : "Senha forte",
+  };
+}
+
+function renderRegisterPasswordStrength() {
+  if (!els["register-password"] || !els["password-strength-fill"]) return;
+  const password = els["register-password"].value || "";
+  const confirmation = els["register-confirm"].value || "";
+  const strength = evaluatePassword(password);
+  const width = `${Math.max(8, strength.score * 20)}%`;
+
+  els["password-strength-fill"].style.width = password ? width : "0%";
+  els["password-strength-fill"].classList.toggle("medium", strength.score >= 3 && strength.score < 5);
+  els["password-strength-fill"].classList.toggle("strong", strength.valid);
+  els["password-strength-label"].textContent = password ? strength.label : "Senha muito fraca";
+
+  const matches = Boolean(password && confirmation && password === confirmation);
+  els["password-match-label"].textContent = matches
+    ? "Senhas iguais"
+    : confirmation
+      ? "Senhas diferentes"
+      : "Confirme a senha";
+  els["register-confirm"].classList.toggle("invalid", Boolean(confirmation && !matches));
+
+  Object.entries(strength.rules).forEach(([key, valid]) => {
+    els[`password-rule-${key}`]?.classList.toggle("valid", valid);
+  });
+  els["register-submit-button"].disabled = !(strength.valid && matches);
+}
+
+function showAccountCreatedDialog(message) {
+  els["account-success-message"].textContent = message;
+  renderAuthState();
+  if (els["account-success-dialog"].showModal) {
+    els["account-success-dialog"].showModal();
+  } else {
+    window.alert(message);
+    switchAuthMode("login");
+    renderAuthState();
   }
 }
 
@@ -900,11 +999,7 @@ function renderAdminUsers() {
     .map((user) => {
       const status = user.disabledAt ? "Desativada" : "Ativa";
       const statusClass = user.disabledAt ? "open" : "paid";
-      const action = user.isCurrentUser
-        ? `<span class="muted-text">Conta atual</span>`
-        : user.disabledAt
-          ? `<button class="button compact ghost" type="button" onclick="adminUserAction(${user.id}, 'enable')">Reativar</button>`
-          : `<button class="button compact" type="button" onclick="adminUserAction(${user.id}, 'disable')">Desativar</button>`;
+      const action = adminUserActions(user);
       const aiChecked = user.features?.ai_chat ? "checked" : "";
 
       return `
@@ -926,6 +1021,24 @@ function renderAdminUsers() {
       `;
     })
     .join("") || emptyRow(8);
+}
+
+function adminUserActions(user) {
+  if (user.isCurrentUser) {
+    return `<span class="muted-text">Conta atual</span>`;
+  }
+  if (user.isAdmin) {
+    return `<span class="muted-text">Admin protegido</span>`;
+  }
+  const statusButton = user.disabledAt
+    ? `<button class="button compact ghost" type="button" onclick="adminUserAction(${user.id}, 'enable')">Reativar</button>`
+    : `<button class="button compact" type="button" onclick="adminUserAction(${user.id}, 'disable')">Desativar</button>`;
+  return `
+    <div class="row-actions">
+      ${statusButton}
+      <button class="button compact danger" type="button" onclick="deleteAdminUser(${user.id})">Deletar</button>
+    </div>
+  `;
 }
 
 function renderAdminInvites() {
@@ -993,6 +1106,31 @@ async function toggleUserFeature(id, key, enabled) {
   } catch (error) {
     showToast(error.message || "Nao foi possivel alterar a feature.");
     await loadAdminUsers();
+  }
+}
+
+async function deleteAdminUser(id) {
+  const target = state.adminUsers.find((user) => user.id === id);
+  if (!target) {
+    showToast("Conta nao encontrada.");
+    return;
+  }
+  const label = target.email || target.username || `ID ${id}`;
+  if (!window.confirm(`Tem certeza que quer deletar a conta ${label}? Todos os dados financeiros dela serao apagados.`)) {
+    return;
+  }
+  const typed = window.prompt(`Para confirmar a exclusao de ${label}, digite DELETAR`);
+  if (typed !== "DELETAR") {
+    showToast("Exclusao cancelada.");
+    return;
+  }
+
+  try {
+    await readJson(await fetch(`/api/admin/users/${id}`, postOptions({ action: "delete", confirm: "DELETAR" })));
+    showToast("Conta deletada.");
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel deletar a conta.");
   }
 }
 
