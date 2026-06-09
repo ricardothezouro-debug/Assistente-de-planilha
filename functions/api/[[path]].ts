@@ -100,7 +100,7 @@ const CATEGORIES = [
 const MONTH_NAMES = [
   "Janeiro",
   "Fevereiro",
-  "Marco",
+  "Março",
   "Abril",
   "Maio",
   "Junho",
@@ -182,7 +182,7 @@ export async function onRequest(context: Context): Promise<Response> {
       return listAdminInvitesEndpoint(db, user);
     }
     if (method === "POST" && segments.join("/") === "admin/invites") {
-      return createAdminInviteEndpoint(db, user, meta, await request.json());
+      return createAdminInviteEndpoint(db, context.env, user, meta, await request.json());
     }
     if (method === "POST" && segments[0] === "admin" && segments[1] === "invites" && segments[3] === "revoke") {
       return revokeAdminInviteEndpoint(db, user, meta, Number(segments[2]));
@@ -197,7 +197,7 @@ export async function onRequest(context: Context): Promise<Response> {
       return adminUserActionEndpoint(db, context.env, user, meta, Number(segments[2]), await request.json());
     }
 
-    return json({ error: "Rota nao encontrada." }, 404);
+    return json({ error: "Rota não encontrada." }, 404);
   } catch (err) {
     console.error("cloudflare api error:", err);
     return json({ error: normalizeError(err) }, inferStatus(err));
@@ -225,7 +225,7 @@ async function getAuthUser(env: Env, token: string): Promise<SupabaseAuthUser> {
       Authorization: `Bearer ${token}`,
     },
   });
-  if (!response.ok) throw statusError("Sessao invalida.", 401);
+  if (!response.ok) throw statusError("Sessão inválida.", 401);
   return response.json();
 }
 
@@ -242,13 +242,13 @@ async function deleteSupabaseAuthUser(env: Env, supabaseUserId: string) {
   if (response.ok || response.status === 404) return;
   const payload = parseJson(await response.text());
   const message = payload?.message || payload?.error_description || payload?.error || response.statusText;
-  throw statusError(`Nao foi possivel deletar o login no Supabase: ${message}`, response.status);
+  throw statusError(`Não foi possível deletar o login no Supabase: ${message}`, response.status);
 }
 
 async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient, meta: RequestMeta): Promise<AppUser> {
   const auth = request.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
-  if (!token) throw statusError("Login necessario.", 401);
+  if (!token) throw statusError("Login necessário.", 401);
 
   const authUser = await getAuthUser(env, token);
   const inviteToken = request.headers.get("X-Invite-Token")?.trim() || "";
@@ -403,9 +403,9 @@ async function getState(db: SupabaseClient, user: AppUser, url: URL) {
 
 async function createEntryEndpoint(db: SupabaseClient, user: AppUser, body: any) {
   const type = String(body.type ?? "");
-  if (!(ENTRY_TYPES as readonly string[]).includes(type)) return json({ error: `Tipo invalido: ${type}` }, 400);
+  if (!(ENTRY_TYPES as readonly string[]).includes(type)) return json({ error: `Tipo inválido: ${type}` }, 400);
   const name = String(body.name ?? "").trim();
-  if (!name) return json({ error: "Informe uma descricao." }, 400);
+  if (!name) return json({ error: "Informe uma descrição." }, 400);
 
   const amountCents = parseMoneyCents(String(body.amount ?? ""));
   if (amountCents <= 0) return json({ error: "O valor deve ser maior que zero." }, 400);
@@ -435,13 +435,13 @@ async function createCategoryEndpoint(db: SupabaseClient, user: AppUser, body: a
 }
 
 async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, categoryId: number) {
-  if (!categoryId) return json({ error: "ID invalido." }, 400);
+  if (!categoryId) return json({ error: "ID inválido." }, 400);
   const category = await maybeSingle<{ id: number; name: string }>(
     db.from("categories").select("id,name").eq("id", categoryId).eq("user_id", user.id).limit(1)
   );
-  if (!category) return json({ error: "Categoria nao encontrada." }, 404);
+  if (!category) return json({ error: "Categoria não encontrada." }, 404);
   if ((CATEGORIES as readonly string[]).includes(category.name)) {
-    return json({ error: "Categorias padrao nao podem ser removidas." }, 400);
+    return json({ error: "Categorias padrão não podem ser removidas." }, 400);
   }
 
   const entryUsage = await maybeSingle<{ id: number }>(
@@ -451,7 +451,7 @@ async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, meta: R
     db.from("occurrences").select("id").eq("user_id", user.id).eq("category_id", categoryId).limit(1)
   );
   if (entryUsage || occurrenceUsage) {
-    return json({ error: "Esta categoria ja esta em uso em lancamentos." }, 400);
+    return json({ error: "Esta categoria já está em uso em lançamentos." }, 400);
   }
 
   await checked(db.from("categories").delete().eq("id", categoryId).eq("user_id", user.id));
@@ -467,11 +467,11 @@ async function deleteCategoryEndpoint(db: SupabaseClient, user: AppUser, meta: R
 }
 
 async function toggleOccurrenceEndpoint(db: SupabaseClient, user: AppUser, id: number) {
-  if (!id) return json({ error: "ID invalido." }, 400);
+  if (!id) return json({ error: "ID inválido." }, 400);
   const row = await maybeSingle<{ id: number; status: string }>(
     db.from("occurrences").select("id,status").eq("id", id).eq("user_id", user.id).limit(1)
   );
-  if (!row) return json({ error: "Lancamento nao encontrado." }, 404);
+  if (!row) return json({ error: "Lançamento não encontrado." }, 404);
 
   const status = row.status === STATUS_PAID ? STATUS_UNPAID : STATUS_PAID;
   await checked(
@@ -487,12 +487,12 @@ async function toggleOccurrenceEndpoint(db: SupabaseClient, user: AppUser, id: n
 async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, body: any) {
   const id = Number(typeof body.occurrence_id === "number" ? body.occurrence_id : body.occurrenceId);
   const scope = String(body.scope ?? "all");
-  if (!id) return json({ error: "ID invalido." }, 400);
+  if (!id) return json({ error: "ID inválido." }, 400);
 
   const row = await maybeSingle<{ id: number; entry_id: number; due_date: string }>(
     db.from("occurrences").select("id,entry_id,due_date").eq("id", id).eq("user_id", user.id).limit(1)
   );
-  if (!row) return json({ error: "Lancamento nao encontrado." }, 404);
+  if (!row) return json({ error: "Lançamento não encontrado." }, 404);
 
   if (scope === "single") {
     await checked(db.from("occurrences").delete().eq("id", id).eq("user_id", user.id));
@@ -507,7 +507,7 @@ async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, meta:
     actorUserId: user.id,
     targetUserId: user.id,
     type: "entry_deleted",
-    message: `Lancamento removido com escopo ${scope}.`,
+    message: `Lançamento removido com escopo ${scope}.`,
     metadata: { occurrenceId: id, entryId: row.entry_id, scope },
     meta,
   });
@@ -516,7 +516,7 @@ async function deleteOccurrenceEndpoint(db: SupabaseClient, user: AppUser, meta:
 
 async function updateInitialInvestedEndpoint(db: SupabaseClient, user: AppUser, body: any) {
   const cents = parseMoneyCents(String(body.amount ?? ""));
-  if (cents < 0) return json({ error: "Valor invalido." }, 400);
+  if (cents < 0) return json({ error: "Valor inválido." }, 400);
   await upsertSetting(db, user.id, "initial_invested_cents", String(cents));
   return json({ ok: true, amount: formatCents(cents) });
 }
@@ -572,11 +572,11 @@ async function adminUserActionEndpoint(
   body: any
 ) {
   requireAdmin(user);
-  if (!targetId) return json({ error: "ID invalido." }, 400);
+  if (!targetId) return json({ error: "ID inválido." }, 400);
   const action = String(body.action ?? "");
 
   if (action === "disable") {
-    if (targetId === user.id) return json({ error: "Voce nao pode desativar sua propria conta." }, 400);
+    if (targetId === user.id) return json({ error: "Você não pode desativar sua própria conta." }, 400);
     await checked(db.from("users").update({ disabled_at: new Date().toISOString() }).eq("id", targetId));
     await audit(db, {
       actorUserId: user.id,
@@ -603,11 +603,11 @@ async function adminUserActionEndpoint(
   if (action === "feature") {
     const key = String(body.key ?? "").trim();
     const enabled = Boolean(body.enabled);
-    if (!/^[a-z0-9_.-]{1,48}$/.test(key)) return json({ error: "Feature invalida." }, 400);
+    if (!/^[a-z0-9_.-]{1,48}$/.test(key)) return json({ error: "Feature inválida." }, 400);
     const target = await maybeSingle<{ feature_flags: string }>(
       db.from("users").select("feature_flags").eq("id", targetId).limit(1)
     );
-    if (!target) return json({ error: "Usuario nao encontrado." }, 404);
+    if (!target) return json({ error: "Usuário não encontrado." }, 404);
     const nextFeatures = { ...parseFeatureFlags(target.feature_flags), [key]: enabled };
     await checked(db.from("users").update({ feature_flags: JSON.stringify(nextFeatures) }).eq("id", targetId));
     await audit(db, {
@@ -621,8 +621,8 @@ async function adminUserActionEndpoint(
     return json({ ok: true, features: nextFeatures });
   }
   if (action === "delete") {
-    if (targetId === user.id) return json({ error: "Voce nao pode deletar sua propria conta." }, 400);
-    if (String(body.confirm ?? "") !== "DELETAR") return json({ error: "Confirmacao invalida." }, 400);
+    if (targetId === user.id) return json({ error: "Você não pode deletar sua própria conta." }, 400);
+    if (String(body.confirm ?? "") !== "DELETAR") return json({ error: "Confirmação inválida." }, 400);
     const target = await maybeSingle<{
       id: number;
       username: string;
@@ -630,8 +630,8 @@ async function adminUserActionEndpoint(
       supabase_user_id: string | null;
       is_admin: boolean;
     }>(db.from("users").select("id,username,email,supabase_user_id,is_admin").eq("id", targetId).limit(1));
-    if (!target) return json({ error: "Usuario nao encontrado." }, 404);
-    if (target.is_admin) return json({ error: "Contas admin nao podem ser deletadas por aqui." }, 400);
+    if (!target) return json({ error: "Usuário não encontrado." }, 404);
+    if (target.is_admin) return json({ error: "Contas admin não podem ser deletadas por aqui." }, 400);
 
     if (target.supabase_user_id) {
       await deleteSupabaseAuthUser(env, target.supabase_user_id);
@@ -652,14 +652,14 @@ async function adminUserActionEndpoint(
     });
     return json({ ok: true });
   }
-  return json({ error: "Acao invalida." }, 400);
+  return json({ error: "Ação inválida." }, 400);
 }
 
 async function previewInviteEndpoint(db: SupabaseClient, url: URL) {
   const token = url.searchParams.get("token")?.trim() ?? "";
   if (!token) return json({ valid: false, error: "Convite ausente." }, 400);
   const invite = await findInviteByToken(db, token);
-  if (!invite) return json({ valid: false, error: "Convite nao encontrado." }, 404);
+  if (!invite) return json({ valid: false, error: "Convite não encontrado." }, 404);
   const status = inviteStatus(invite);
   return json({
     valid: status === "ativo",
@@ -677,10 +677,10 @@ async function listAdminInvitesEndpoint(db: SupabaseClient, user: AppUser) {
   return json({ invites: rows.map(publicInvite) });
 }
 
-async function createAdminInviteEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, body: any) {
+async function createAdminInviteEndpoint(db: SupabaseClient, env: Env, user: AppUser, meta: RequestMeta, body: any) {
   requireAdmin(user);
   const email = normalizeEmail(body.email);
-  if (!email) return json({ error: "Informe um email valido." }, 400);
+  if (!email) return json({ error: "Informe um email válido." }, 400);
   const expiresInDays = clampInt(body.expiresInDays, 1, 90, 7);
   const token = randomToken();
   const tokenHash = await hashToken(token);
@@ -697,25 +697,54 @@ async function createAdminInviteEndpoint(db: SupabaseClient, user: AppUser, meta
       .select(inviteSelect())
   );
   const link = `${meta.origin}/?invite=${encodeURIComponent(token)}`;
+  const emailResult = await sendSupabaseInviteEmail(env, email, link);
   await audit(db, {
     actorUserId: user.id,
     targetUserId: null,
     type: "invite_created",
     message: `Convite criado para ${email}.`,
-    metadata: { inviteId: invite.id, email, expiresAt },
+    metadata: { inviteId: invite.id, email, expiresAt, emailSent: emailResult.sent, emailError: emailResult.error },
     meta,
   });
-  return json({ invite: publicInvite(invite), link }, 201);
+  return json({ invite: publicInvite(invite), link, emailSent: emailResult.sent, emailError: emailResult.error }, 201);
+}
+
+async function sendSupabaseInviteEmail(env: Env, email: string, redirectTo: string) {
+  try {
+    assertEnv(env, "SUPABASE_URL");
+    assertEnv(env, "SUPABASE_SERVICE_ROLE_KEY");
+    const response = await fetch(
+      `${env.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          data: { source: "financeiro_invite" },
+        }),
+      }
+    );
+    if (response.ok) return { sent: true, error: null };
+    const payload = parseJson(await response.text());
+    const message = payload?.message || payload?.error_description || payload?.error || response.statusText;
+    return { sent: false, error: String(message) };
+  } catch (error) {
+    return { sent: false, error: normalizeError(error) };
+  }
 }
 
 async function revokeAdminInviteEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, inviteId: number) {
   requireAdmin(user);
-  if (!inviteId) return json({ error: "ID invalido." }, 400);
+  if (!inviteId) return json({ error: "ID inválido." }, 400);
   const invite = await maybeSingle<InviteTokenRow>(
     db.from("invite_tokens").select(inviteSelect()).eq("id", inviteId).limit(1)
   );
-  if (!invite) return json({ error: "Convite nao encontrado." }, 404);
-  if (invite.consumed_at) return json({ error: "Convite ja usado nao pode ser revogado." }, 400);
+  if (!invite) return json({ error: "Convite não encontrado." }, 404);
+  if (invite.consumed_at) return json({ error: "Convite já usado não pode ser revogado." }, 400);
 
   const updated = await single<InviteTokenRow>(
     db
@@ -783,10 +812,10 @@ async function adminBackupEndpoint(db: SupabaseClient, user: AppUser, meta: Requ
 }
 
 async function requireValidInvite(db: SupabaseClient, token: string, email: string) {
-  if (!token) throw statusError("Convite necessario para criar uma nova conta.", 403);
+  if (!token) throw statusError("Convite necessário para criar uma nova conta.", 403);
   if (!email) throw statusError("Sua conta precisa ter email para usar convite.", 403);
   const invite = await findInviteByToken(db, token);
-  if (!invite) throw statusError("Convite invalido.", 403);
+  if (!invite) throw statusError("Convite inválido.", 403);
   const status = inviteStatus(invite);
   if (status !== "ativo") throw statusError(`Convite ${status}.`, 403);
   if (invite.email.trim().toLowerCase() !== email.trim().toLowerCase()) {
@@ -805,7 +834,7 @@ async function consumeInvite(db: SupabaseClient, invite: InviteTokenRow, userId:
       .is("revoked_at", null)
       .select("id")
   );
-  if (!consumed.length) throw statusError("Convite ja foi usado ou revogado.", 403);
+  if (!consumed.length) throw statusError("Convite já foi usado ou revogado.", 403);
   await audit(db, {
     actorUserId: userId,
     targetUserId: userId,
@@ -1337,7 +1366,7 @@ function parseJsonObject(value: string | null | undefined) {
 }
 
 function requireAdmin(user: AppUser) {
-  if (!user.isAdmin) throw statusError("Acesso de admin necessario.", 403);
+  if (!user.isAdmin) throw statusError("Acesso de admin necessário.", 403);
 }
 
 function getAdminEmail(env: Env) {
@@ -1571,7 +1600,7 @@ class SupabaseRestQuery {
     if (result.error) return result;
     if (Array.isArray(result.data)) {
       const data = result.data[0] ?? null;
-      return { data, error: data ? null : statusError("Registro nao encontrado.", 404) };
+      return { data, error: data ? null : statusError("Registro não encontrado.", 404) };
     }
     return result;
   }
@@ -1672,7 +1701,7 @@ async function maybeSingle<T>(query: any) {
 async function single<T>(query: any) {
   const { data, error } = await query.single();
   if (error) throw error;
-  if (!data) throw new Error("Registro nao encontrado.");
+  if (!data) throw new Error("Registro não encontrado.");
   return data as T;
 }
 
@@ -1694,7 +1723,7 @@ function forbiddenLegacyAuth() {
 }
 
 function assertEnv(env: Env, key: keyof Env) {
-  if (!env[key]) throw statusError(`Variavel ${key} nao configurada.`, 500);
+  if (!env[key]) throw statusError(`Variável ${key} não configurada.`, 500);
 }
 
 function statusError(message: string, status: number) {
