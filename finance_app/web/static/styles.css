@@ -206,7 +206,7 @@ select {
 }
 
 .app-shell.sidebar-collapsed {
-  grid-template-columns: 1px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -221,8 +221,8 @@ select {
   padding: 22px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(9, 12, 17, 0.9);
-  overflow: hidden;
-  transition: width 160ms ease, padding 160ms ease, border-color 160ms ease;
+  overflow: visible;
+  transition: width 160ms ease, padding 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .sidebar-toggle {
@@ -269,9 +269,10 @@ select {
 }
 
 .sidebar-collapsed .sidebar {
-  width: 1px;
+  width: 20px;
   padding: 0;
   border-right-color: rgba(45, 212, 191, 0.32);
+  background: rgba(9, 12, 17, 0.82);
   overflow: visible;
 }
 
@@ -281,7 +282,11 @@ select {
 }
 
 .sidebar-collapsed .sidebar-toggle {
-  right: -6px;
+  right: 4px;
+}
+
+.sidebar-collapsed .sidebar-toggle:hover {
+  right: -7px;
 }
 
 .sidebar-collapsed .sidebar-toggle:hover::before {
