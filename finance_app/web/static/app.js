@@ -63,6 +63,7 @@ function bindElements() {
     "reset-cancel-button",
     "auth-separator",
     "sidebar-toggle",
+    "cloud-note",
     "current-user",
     "logout-button",
     "admin-nav-item",
@@ -599,11 +600,13 @@ function renderAuthState() {
     const user = state.session.user ?? {};
     els["current-user"].textContent = user.displayName || user.username || "Usuário";
     els["admin-nav-item"].classList.toggle("hidden", !user.isAdmin);
+    els["cloud-note"].classList.toggle("hidden", !user.isAdmin);
     if (!user.isAdmin && state.view === "admin") {
       switchView("dashboard");
     }
   } else {
     els["admin-nav-item"].classList.add("hidden");
+    els["cloud-note"].classList.add("hidden");
   }
 }
 
