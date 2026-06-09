@@ -194,7 +194,7 @@ export async function onRequest(context: Context): Promise<Response> {
       return adminBackupEndpoint(db, user, meta);
     }
     if (method === "POST" && segments[0] === "admin" && segments[1] === "users" && segments[2]) {
-      return adminUserActionEndpoint(db, user, meta, Number(segments[2]), await request.json());
+      return adminUserActionEndpoint(db, context.env, user, meta, Number(segments[2]), await request.json());
     }
 
     return json({ error: "Rota nao encontrada." }, 404);
@@ -227,6 +227,22 @@ async function getAuthUser(env: Env, token: string): Promise<SupabaseAuthUser> {
   });
   if (!response.ok) throw statusError("Sessao invalida.", 401);
   return response.json();
+}
+
+async function deleteSupabaseAuthUser(env: Env, supabaseUserId: string) {
+  assertEnv(env, "SUPABASE_URL");
+  assertEnv(env, "SUPABASE_SERVICE_ROLE_KEY");
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/admin/users/${supabaseUserId}`, {
+    method: "DELETE",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  });
+  if (response.ok || response.status === 404) return;
+  const payload = parseJson(await response.text());
+  const message = payload?.message || payload?.error_description || payload?.error || response.statusText;
+  throw statusError(`Nao foi possivel deletar o login no Supabase: ${message}`, response.status);
 }
 
 async function getUserFromRequest(request: Request, env: Env, db: SupabaseClient, meta: RequestMeta): Promise<AppUser> {
@@ -547,7 +563,14 @@ async function listAdminUsersEndpoint(db: SupabaseClient, user: AppUser) {
   });
 }
 
-async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, meta: RequestMeta, targetId: number, body: any) {
+async function adminUserActionEndpoint(
+  db: SupabaseClient,
+  env: Env,
+  user: AppUser,
+  meta: RequestMeta,
+  targetId: number,
+  body: any
+) {
   requireAdmin(user);
   if (!targetId) return json({ error: "ID invalido." }, 400);
   const action = String(body.action ?? "");
@@ -596,6 +619,38 @@ async function adminUserActionEndpoint(db: SupabaseClient, user: AppUser, meta: 
       meta,
     });
     return json({ ok: true, features: nextFeatures });
+  }
+  if (action === "delete") {
+    if (targetId === user.id) return json({ error: "Voce nao pode deletar sua propria conta." }, 400);
+    if (String(body.confirm ?? "") !== "DELETAR") return json({ error: "Confirmacao invalida." }, 400);
+    const target = await maybeSingle<{
+      id: number;
+      username: string;
+      email: string | null;
+      supabase_user_id: string | null;
+      is_admin: boolean;
+    }>(db.from("users").select("id,username,email,supabase_user_id,is_admin").eq("id", targetId).limit(1));
+    if (!target) return json({ error: "Usuario nao encontrado." }, 404);
+    if (target.is_admin) return json({ error: "Contas admin nao podem ser deletadas por aqui." }, 400);
+
+    if (target.supabase_user_id) {
+      await deleteSupabaseAuthUser(env, target.supabase_user_id);
+    }
+    await checked(db.from("users").delete().eq("id", targetId));
+    await audit(db, {
+      actorUserId: user.id,
+      targetUserId: null,
+      type: "user_deleted",
+      message: `Conta deletada pelo admin: ${target.email || target.username}.`,
+      metadata: {
+        targetUserId: target.id,
+        username: target.username,
+        email: target.email,
+        supabaseUserId: target.supabase_user_id,
+      },
+      meta,
+    });
+    return json({ ok: true });
   }
   return json({ error: "Acao invalida." }, 400);
 }
