@@ -11,16 +11,19 @@ const state = {
   adminTab: "users",
   inviteToken: "",
   invitePreview: null,
+  sidebarCollapsed: false,
 };
 
 const els = {};
 const SUPABASE_URL = "https://yrarkwxaivsqsnpgabmh.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_RYJDWtHHQKmb9bIrrw9IIA_wY3u8GiD";
 const INVITE_STORAGE_KEY = "financeiro-invite-token";
+const SIDEBAR_STORAGE_KEY = "financeiro-sidebar-collapsed";
 let supabaseClient = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   captureInviteToken();
+  restoreSidebarState();
   supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) ?? null;
   bindElements();
   bindEvents();
@@ -59,6 +62,7 @@ function bindElements() {
     "reset-confirm",
     "reset-cancel-button",
     "auth-separator",
+    "sidebar-toggle",
     "current-user",
     "logout-button",
     "admin-nav-item",
@@ -85,6 +89,14 @@ function bindElements() {
     "password-current",
     "password-new",
     "password-confirm",
+    "profile-password-strength-fill",
+    "profile-password-strength-label",
+    "profile-password-match-label",
+    "profile-password-rule-length",
+    "profile-password-rule-lower",
+    "profile-password-rule-upper",
+    "profile-password-rule-number",
+    "profile-password-rule-symbol",
     "profile-category-list",
     "admin-refresh-button",
     "admin-user-rows",
@@ -159,6 +171,9 @@ function bindEvents() {
   });
   els["profile-form"].addEventListener("submit", submitProfile);
   els["password-form"].addEventListener("submit", submitPassword);
+  els["password-new"].addEventListener("input", renderProfilePasswordStrength);
+  els["password-confirm"].addEventListener("input", renderProfilePasswordStrength);
+  els["sidebar-toggle"].addEventListener("click", toggleSidebar);
   els["admin-refresh-button"].addEventListener("click", loadAdminData);
   els["invite-form"].addEventListener("submit", submitInvite);
   els["backup-button"].addEventListener("click", downloadBackup);
@@ -171,10 +186,13 @@ function bindEvents() {
     els["account-success-dialog"].close();
     switchAuthMode("login");
     renderAuthState();
+    showToast("Enviamos um email de confirmação de conta, se a confirmação estiver ativa no Supabase.");
     els["login-password"].focus();
   });
   window.addEventListener("resize", debounce(drawCharts, 120));
   renderRegisterPasswordStrength();
+  renderProfilePasswordStrength();
+  applySidebarState();
 
   supabaseClient?.auth.onAuthStateChange((event, session) => {
     if (event === "PASSWORD_RECOVERY" && session) {
@@ -204,7 +222,7 @@ async function loadState() {
     state.month = data.selectedMonth;
     render();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel carregar os dados.");
+    showToast(error.message || "Não foi possível carregar os dados.");
   }
 }
 
@@ -219,17 +237,17 @@ async function submitLogin(event) {
     if (error) throw error;
     saveSupabaseSession(data.session, data.user);
     renderAuthState();
-    showToast("Sessao iniciada.");
+    showToast("Sessão iniciada.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel entrar.");
+    showToast(error.message || "Não foi possível entrar.");
   }
 }
 
 async function submitRegister(event) {
   event.preventDefault();
   if (!state.inviteToken || state.invitePreview?.valid === false) {
-    showToast("Cadastro permitido somente por convite valido.");
+    showToast("Cadastro permitido somente por convite válido.");
     return;
   }
   try {
@@ -245,7 +263,7 @@ async function submitRegister(event) {
       return;
     }
     if (password !== confirmation) {
-      showToast("As senhas digitadas nao conferem.");
+      showToast("As senhas digitadas não conferem.");
       renderRegisterPasswordStrength();
       return;
     }
@@ -269,13 +287,13 @@ async function submitRegister(event) {
     els["register-email"].value = state.invitePreview?.email || email;
     renderRegisterPasswordStrength();
     if (!data.session) {
-      showAccountCreatedDialog("Conta criada. Se o Supabase pedir confirmacao, confirme pelo email antes de entrar.");
+      showAccountCreatedDialog("Conta criada. Se o Supabase pedir confirmação, confirme pelo email antes de entrar.");
       return;
     }
     renderAuthState();
     showAccountCreatedDialog("Conta criada. Entre com seu email e senha para ativar sua planilha.");
   } catch (error) {
-    showToast(error.message || "Nao foi possivel criar a conta.");
+    showToast(error.message || "Não foi possível criar a conta.");
   }
 }
 
@@ -292,34 +310,58 @@ function evaluatePassword(password) {
     rules,
     score,
     valid: score === 5,
-    label: score <= 2 ? "Senha fraca" : score <= 4 ? "Senha media" : "Senha forte",
+    label: score <= 2 ? "Senha fraca" : score <= 4 ? "Senha média" : "Senha forte",
   };
 }
 
 function renderRegisterPasswordStrength() {
   if (!els["register-password"] || !els["password-strength-fill"]) return;
-  const password = els["register-password"].value || "";
-  const confirmation = els["register-confirm"].value || "";
+  const valid = renderPasswordStrength({
+    passwordInput: els["register-password"],
+    confirmInput: els["register-confirm"],
+    fill: els["password-strength-fill"],
+    label: els["password-strength-label"],
+    matchLabel: els["password-match-label"],
+    rulePrefix: "password-rule",
+  });
+  els["register-submit-button"].disabled = !valid;
+}
+
+function renderProfilePasswordStrength() {
+  if (!els["password-new"] || !els["profile-password-strength-fill"]) return false;
+  return renderPasswordStrength({
+    passwordInput: els["password-new"],
+    confirmInput: els["password-confirm"],
+    fill: els["profile-password-strength-fill"],
+    label: els["profile-password-strength-label"],
+    matchLabel: els["profile-password-match-label"],
+    rulePrefix: "profile-password-rule",
+  });
+}
+
+function renderPasswordStrength({ passwordInput, confirmInput, fill, label, matchLabel, rulePrefix }) {
+  const password = passwordInput.value || "";
+  const confirmation = confirmInput.value || "";
   const strength = evaluatePassword(password);
   const width = `${Math.max(8, strength.score * 20)}%`;
 
-  els["password-strength-fill"].style.width = password ? width : "0%";
-  els["password-strength-fill"].classList.toggle("medium", strength.score >= 3 && strength.score < 5);
-  els["password-strength-fill"].classList.toggle("strong", strength.valid);
-  els["password-strength-label"].textContent = password ? strength.label : "Senha muito fraca";
+  fill.style.width = password ? width : "0%";
+  fill.classList.toggle("medium", strength.score >= 3 && strength.score < 5);
+  fill.classList.toggle("strong", strength.valid);
+  label.textContent = password ? strength.label : "Senha muito fraca";
 
   const matches = Boolean(password && confirmation && password === confirmation);
-  els["password-match-label"].textContent = matches
+  matchLabel.textContent = matches
     ? "Senhas iguais"
     : confirmation
       ? "Senhas diferentes"
       : "Confirme a senha";
-  els["register-confirm"].classList.toggle("invalid", Boolean(confirmation && !matches));
+  confirmInput.classList.toggle("invalid", Boolean(confirmation && !matches));
 
   Object.entries(strength.rules).forEach(([key, valid]) => {
-    els[`password-rule-${key}`]?.classList.toggle("valid", valid);
+    els[`${rulePrefix}-${key}`]?.classList.toggle("valid", valid);
   });
-  els["register-submit-button"].disabled = !(strength.valid && matches);
+  return strength.valid && matches;
 }
 
 function showAccountCreatedDialog(message) {
@@ -345,7 +387,7 @@ async function loginWithGoogle() {
     });
     if (error) throw error;
   } catch (error) {
-    showToast(error.message || "Nao foi possivel iniciar o Google Login.");
+    showToast(error.message || "Não foi possível iniciar o Google Login.");
   }
 }
 
@@ -362,9 +404,9 @@ async function resetPassword() {
       redirectTo: `${window.location.origin}?password_recovery=1`,
     });
     if (error) throw error;
-    showToast("Enviamos o link de redefinicao para seu email.");
+    showToast("Enviamos o link de redefinição para seu email.");
   } catch (error) {
-    showToast(error.message || "Nao foi possivel enviar o email.");
+    showToast(error.message || "Não foi possível enviar o email.");
   }
 }
 
@@ -374,7 +416,7 @@ async function submitPasswordRecovery(event) {
   const confirmation = els["reset-confirm"].value;
 
   if (password !== confirmation) {
-    showToast("As senhas nao conferem.");
+    showToast("As senhas não conferem.");
     return;
   }
 
@@ -395,7 +437,7 @@ async function submitPasswordRecovery(event) {
     showToast("Senha redefinida.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel redefinir a senha.");
+    showToast(error.message || "Não foi possível redefinir a senha.");
   }
 }
 
@@ -471,7 +513,7 @@ async function loadInvitePreview() {
     switchAuthMode("register");
   } catch (error) {
     state.invitePreview = { valid: false, error: error.message };
-    showToast(error.message || "Convite invalido.");
+    showToast(error.message || "Convite inválido.");
   }
 }
 
@@ -518,7 +560,7 @@ function saveSupabaseSession(session, user) {
     token: session.access_token,
     authEmail: user.email,
     user: {
-      username: user.user_metadata?.username || user.email || "Usuario",
+      username: user.user_metadata?.username || user.email || "Usuário",
       displayName: user.user_metadata?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || null,
     },
   });
@@ -555,7 +597,7 @@ function renderAuthState() {
     : "Novas contas entram somente por convite.";
   if (isLoggedIn) {
     const user = state.session.user ?? {};
-    els["current-user"].textContent = user.displayName || user.username || "Usuario";
+    els["current-user"].textContent = user.displayName || user.username || "Usuário";
     els["admin-nav-item"].classList.toggle("hidden", !user.isAdmin);
     if (!user.isAdmin && state.view === "admin") {
       switchView("dashboard");
@@ -604,8 +646,8 @@ function fillFilters() {
 
 function fillFormOptions() {
   const data = state.data;
-  fillSelect(els["entry-type"], data.entryTypes, els["entry-type"].value || "Variavel");
-  fillSelect(els["entry-category"], data.categories, els["entry-category"].value || "Outros");
+  fillSelect(els["entry-type"], data.entryTypes, els["entry-type"].value || "Variavel", displayEntryType);
+  fillSelect(els["entry-category"], data.categories, els["entry-category"].value || "Outros", displayCategory);
   syncStatusOptions();
   if (!els["entry-date"].value) {
     els["entry-date"].value = data.today;
@@ -613,12 +655,22 @@ function fillFormOptions() {
   syncEntryTypeFields();
 }
 
-function fillSelect(select, values, preferred = "") {
+function fillSelect(select, values, preferred = "", labeler = (value) => value) {
   const current = preferred || select.value;
-  select.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  select.innerHTML = values
+    .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(labeler(value))}</option>`)
+    .join("");
   if (values.includes(current)) {
     select.value = current;
   }
+}
+
+function displayEntryType(value) {
+  return value === "Variavel" ? "Variável" : value;
+}
+
+function displayCategory(value) {
+  return value === "Saude" ? "Saúde" : value;
 }
 
 function syncInstallmentsVisibility() {
@@ -632,7 +684,7 @@ function syncStatusOptions() {
   const values = [
     { value: "Auto", label: "Auto" },
     { value: "Pago", label: isIncome ? "Recebido" : "Pago" },
-    { value: "Nao pago", label: isIncome ? "Nao recebido" : "Nao pago" },
+    { value: "Nao pago", label: isIncome ? "Não recebido" : "Não pago" },
   ];
   els["entry-status"].innerHTML = values
     .map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`)
@@ -653,7 +705,7 @@ function renderSummary() {
     ["Despesas", summary.expenses.label, summary.expenses.cents > 0 ? "bad" : ""],
     ["Em aberto", summary.open_expenses.label, summary.open_expenses.cents > 0 ? "warn" : ""],
     ["Sobra", summary.balance.label, summary.balance.cents >= 0 ? "good" : "bad"],
-    ["Investido no mes", summary.invested_month.label, "good"],
+    ["Investido no mês", summary.invested_month.label, "good"],
     ["Investido inicial", summary.initial_invested.label, ""],
     ["Investido no ano", summary.invested_year.label, "good"],
     ["Pagas", summary.paid_expenses.label, ""],
@@ -674,7 +726,7 @@ function renderDashboardRow(item) {
     <tr>
       <td>${item.dateLabel}</td>
       <td>${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(item.category)}</td>
+      <td>${escapeHtml(displayCategory(item.category))}</td>
       <td class="amount">${item.amount}</td>
       <td>${statusPill(item.status, item.type)}</td>
     </tr>
@@ -685,9 +737,9 @@ function renderOccurrenceRow(item) {
   return `
     <tr>
       <td>${item.dateLabel}</td>
-      <td>${item.type}</td>
+      <td>${displayEntryType(item.type)}</td>
       <td>${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(item.category)}</td>
+      <td>${escapeHtml(displayCategory(item.category))}</td>
       <td>${item.installment || "-"}</td>
       <td class="amount">${item.amount}</td>
       <td>${statusPill(item.status, item.type)}</td>
@@ -702,7 +754,7 @@ function renderOccurrenceRow(item) {
 }
 
 function emptyRow(columns) {
-  return `<tr><td colspan="${columns}">Nenhum lancamento para este periodo.</td></tr>`;
+  return `<tr><td colspan="${columns}">Nenhum lançamento para este período.</td></tr>`;
 }
 
 function statusPill(status, type) {
@@ -712,7 +764,7 @@ function statusPill(status, type) {
 
 function displayStatus(status, type) {
   if (type === "Recebido") {
-    return status === "Pago" ? "Recebido" : "Nao recebido";
+    return status === "Pago" ? "Recebido" : "Não recebido";
   }
   return status;
 }
@@ -746,10 +798,10 @@ async function submitEntry(event) {
     await readJson(await fetch("/api/entries", postOptions(payload)));
     els["entry-form"].reset();
     setFormDefaults();
-    showToast("Lancamento criado.");
+    showToast("Lançamento criado.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel lancar.");
+    showToast(error.message || "Não foi possível lançar.");
   }
 }
 
@@ -767,14 +819,14 @@ async function toggleOccurrence(id) {
     await readJson(await fetch(`/api/occurrences/${id}/toggle`, postOptions({})));
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel atualizar.");
+    showToast(error.message || "Não foi possível atualizar.");
   }
 }
 
 function openDeleteDialogById(id) {
   const item = state.data.occurrences.find((occurrence) => occurrence.id === id);
   if (!item) {
-    showToast("Lancamento nao encontrado.");
+    showToast("Lançamento não encontrado.");
     return;
   }
 
@@ -800,10 +852,10 @@ function openDeleteDialogById(id) {
 function deleteOptionsFor(item) {
   if (item.type === "Fixa") {
     return {
-      copy: "Escolha se a fixa sai so deste mes, deste mes em diante ou de todos os meses.",
+      copy: "Escolha se a fixa sai só deste mês, deste mês em diante ou de todos os meses.",
       actions: [
-        { scope: "single", label: "Somente este mes" },
-        { scope: "from", label: "Deste mes em diante" },
+        { scope: "single", label: "Somente este mês" },
+        { scope: "from", label: "Deste mês em diante" },
         { scope: "all", label: "Todos os meses", primary: true },
       ],
     };
@@ -819,7 +871,7 @@ function deleteOptionsFor(item) {
     };
   }
   return {
-    copy: "Este lancamento sera removido.",
+    copy: "Este lançamento será removido.",
     actions: [{ scope: "all", label: "Remover", primary: true }],
   };
 }
@@ -827,10 +879,10 @@ function deleteOptionsFor(item) {
 async function deleteOccurrence(id, scope) {
   try {
     await readJson(await fetch("/api/delete", postOptions({ occurrenceId: id, scope })));
-    showToast("Lancamento removido.");
+    showToast("Lançamento removido.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel remover.");
+    showToast(error.message || "Não foi possível remover.");
   }
 }
 
@@ -865,14 +917,14 @@ function renderProfile() {
 
   els["profile-category-list"].innerHTML = categories
     .map((category) => {
-      const badge = category.isDefault ? "Padrao" : "Criada";
+      const badge = category.isDefault ? "Padrão" : "Criada";
       const action = category.isDefault
         ? `<span class="muted-text">Protegida</span>`
         : `<button class="button compact ghost" type="button" onclick="deleteCategory(${category.id})">Remover</button>`;
       return `
         <div class="category-row">
           <div>
-            <strong>${escapeHtml(category.name)}</strong>
+            <strong>${escapeHtml(displayCategory(category.name))}</strong>
             <span>${badge}</span>
           </div>
           ${action}
@@ -892,7 +944,7 @@ async function submitProfile(event) {
     showToast("Perfil atualizado.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel atualizar o perfil.");
+    showToast(error.message || "Não foi possível atualizar o perfil.");
   }
 }
 
@@ -903,7 +955,15 @@ async function submitPassword(event) {
   const confirmation = els["password-confirm"].value;
 
   if (newPassword !== confirmation) {
-    showToast("As senhas novas nao conferem.");
+    showToast("As senhas novas não conferem.");
+    renderProfilePasswordStrength();
+    return;
+  }
+
+  const strength = evaluatePassword(newPassword);
+  if (!strength.valid) {
+    showToast("Use uma senha mais forte antes de alterar.");
+    renderProfilePasswordStrength();
     return;
   }
 
@@ -914,7 +974,7 @@ async function submitPassword(event) {
         email: state.session.authEmail,
         password: currentPassword,
       });
-      if (loginError) throw new Error("Senha atual invalida.");
+      if (loginError) throw new Error("Senha atual inválida.");
     }
     const { error } = await client.auth.updateUser({ password: newPassword });
     if (error) throw error;
@@ -923,21 +983,22 @@ async function submitPassword(event) {
       saveSupabaseSession(data.session, data.session.user);
     }
     els["password-form"].reset();
+    renderProfilePasswordStrength();
     showToast("Senha alterada.");
   } catch (error) {
-    showToast(error.message || "Nao foi possivel alterar a senha.");
+    showToast(error.message || "Não foi possível alterar a senha.");
   }
 }
 
 async function deleteCategory(id) {
   if (!id) {
-    showToast("Categoria invalida.");
+    showToast("Categoria inválida.");
     return;
   }
 
   const category = state.data.categoryItems.find((item) => item.id === id);
   if (!category) {
-    showToast("Categoria nao encontrada.");
+    showToast("Categoria não encontrada.");
     return;
   }
 
@@ -950,7 +1011,7 @@ async function deleteCategory(id) {
     showToast("Categoria removida.");
     await loadState();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel remover a categoria.");
+    showToast(error.message || "Não foi possível remover a categoria.");
   }
 }
 
@@ -961,7 +1022,7 @@ async function loadAdminUsers() {
     state.adminUsers = data.users ?? [];
     renderAdminUsers();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel carregar as contas.");
+    showToast(error.message || "Não foi possível carregar as contas.");
   }
 }
 
@@ -984,7 +1045,7 @@ async function loadAdminData() {
   try {
     await Promise.all([loadAdminUsers(), loadAdminInvites(), loadAuditEvents()]);
   } catch (error) {
-    showToast(error.message || "Nao foi possivel carregar o admin.");
+    showToast(error.message || "Não foi possível carregar o admin.");
   }
 }
 
@@ -1007,7 +1068,7 @@ function renderAdminUsers() {
           <td>${escapeHtml(user.username)}</td>
           <td>${escapeHtml(user.email || "-")}</td>
           <td>${escapeHtml(user.displayName || "-")}</td>
-          <td>${user.isAdmin ? "Admin" : "Usuario"}</td>
+          <td>${user.isAdmin ? "Admin" : "Usuário"}</td>
           <td><span class="pill ${statusClass}">${status}</span></td>
           <td>${user.invite ? escapeHtml(user.invite.email) : "-"}</td>
           <td>
@@ -1056,7 +1117,7 @@ function renderAdminInvites() {
             ${
               canRevoke
                 ? `<button class="button compact ghost" type="button" onclick="revokeInvite(${invite.id})">Revogar</button>`
-                : `<span class="muted-text">Sem acao</span>`
+                : `<span class="muted-text">Sem ação</span>`
             }
           </td>
         </tr>
@@ -1095,7 +1156,7 @@ async function adminUserAction(id, action) {
     showToast(action === "disable" ? "Conta desativada." : "Conta reativada.");
     await loadAdminUsers();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel atualizar a conta.");
+    showToast(error.message || "Não foi possível atualizar a conta.");
   }
 }
 
@@ -1104,7 +1165,7 @@ async function toggleUserFeature(id, key, enabled) {
     await readJson(await fetch(`/api/admin/users/${id}`, postOptions({ action: "feature", key, enabled })));
     await loadAdminUsers();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel alterar a feature.");
+    showToast(error.message || "Não foi possível alterar a feature.");
     await loadAdminUsers();
   }
 }
@@ -1112,7 +1173,7 @@ async function toggleUserFeature(id, key, enabled) {
 async function deleteAdminUser(id) {
   const target = state.adminUsers.find((user) => user.id === id);
   if (!target) {
-    showToast("Conta nao encontrada.");
+    showToast("Conta não encontrada.");
     return;
   }
   const label = target.email || target.username || `ID ${id}`;
@@ -1130,7 +1191,7 @@ async function deleteAdminUser(id) {
     showToast("Conta deletada.");
     await loadAdminData();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel deletar a conta.");
+    showToast(error.message || "Não foi possível deletar a conta.");
   }
 }
 
@@ -1160,11 +1221,16 @@ async function submitInvite(event) {
     }
     els["invite-form"].reset();
     els["invite-days"].value = "7";
-    showToast(copied ? "Convite criado e link copiado." : "Convite criado.");
+    const emailCopy = data.emailSent
+      ? " Email enviado automaticamente."
+      : data.emailError
+        ? ` Email não enviado: ${data.emailError}`
+        : "";
+    showToast(`${copied ? "Convite criado e link copiado." : "Convite criado."}${emailCopy}`);
     await loadAdminInvites();
     await loadAuditEvents();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel criar o convite.");
+    showToast(error.message || "Não foi possível criar o convite.");
   }
 }
 
@@ -1176,7 +1242,7 @@ async function revokeInvite(id) {
     await loadAdminInvites();
     await loadAuditEvents();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel revogar o convite.");
+    showToast(error.message || "Não foi possível revogar o convite.");
   }
 }
 
@@ -1199,7 +1265,7 @@ async function downloadBackup() {
     showToast("Backup baixado.");
     await loadAuditEvents();
   } catch (error) {
-    showToast(error.message || "Nao foi possivel baixar o backup.");
+    showToast(error.message || "Não foi possível baixar o backup.");
   }
 }
 
@@ -1227,7 +1293,7 @@ function openTextDialog(title, label, initialValue, onSave) {
     try {
       await onSave(value);
     } catch (error) {
-      showToast(error.message || "Nao foi possivel salvar.");
+      showToast(error.message || "Não foi possível salvar.");
     }
   };
   els["text-dialog"].showModal();
@@ -1250,7 +1316,7 @@ function drawCategoryChart(canvas, rows, large = false) {
   ctx.fillRect(0, 0, width, height);
 
   if (!rows.length) {
-    drawEmpty(ctx, width, height, "Sem despesas neste mes");
+    drawEmpty(ctx, width, height, "Sem despesas neste mês");
     return;
   }
 
@@ -1266,7 +1332,7 @@ function drawCategoryChart(canvas, rows, large = false) {
     const barWidth = Math.max(4, (row.totalCents / max) * barMax);
     ctx.fillStyle = "#e5e7eb";
     ctx.font = "700 13px Segoe UI";
-    ctx.fillText(row.category, 18, y + 16);
+    ctx.fillText(displayCategory(row.category), 18, y + 16);
     ctx.fillStyle = colors[index % colors.length];
     roundedRect(ctx, labelWidth, y, barWidth, 20, 5);
     ctx.fill();
@@ -1348,13 +1414,15 @@ function drawEmpty(ctx, width, height, label) {
   ctx.fillStyle = "#cbd5e1";
   ctx.font = "700 15px Segoe UI";
   ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   ctx.fillText(label, width / 2, height / 2);
   ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
 }
 
 function switchView(view) {
   if (view === "admin" && !state.session?.user?.isAdmin) {
-    showToast("Acesso de admin necessario.");
+    showToast("Acesso de admin necessário.");
     return;
   }
   state.view = view;
@@ -1366,6 +1434,24 @@ function switchView(view) {
     loadAdminData();
   }
   requestAnimationFrame(drawCharts);
+}
+
+function restoreSidebarState() {
+  state.sidebarCollapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+}
+
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, state.sidebarCollapsed ? "1" : "0");
+  applySidebarState();
+  requestAnimationFrame(drawCharts);
+}
+
+function applySidebarState() {
+  if (!els["app-shell"] || !els["sidebar-toggle"]) return;
+  els["app-shell"].classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+  els["sidebar-toggle"].setAttribute("aria-label", state.sidebarCollapsed ? "Expandir menu" : "Minimizar menu");
+  els["sidebar-toggle"].title = state.sidebarCollapsed ? "Expandir menu" : "Minimizar menu";
 }
 
 function postOptions(payload, includeAuth = true) {
@@ -1408,7 +1494,7 @@ function authHeaders() {
 
 function requireSupabase() {
   if (!supabaseClient) {
-    throw new Error("Supabase nao foi carregado.");
+    throw new Error("Supabase não foi carregado.");
   }
   return supabaseClient;
 }

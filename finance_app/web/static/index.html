@@ -43,7 +43,7 @@
             <input id="register-email" type="email" autocomplete="email" required />
           </label>
           <label>
-            Usuario
+            Usuário
             <input id="register-username" type="text" autocomplete="username" placeholder="Ex: gamoxkun" />
           </label>
           <label>
@@ -63,11 +63,11 @@
               <span id="password-match-label">Confirme a senha</span>
             </div>
             <ul class="password-rules">
-              <li id="password-rule-length">No minimo 8 caracteres</li>
-              <li id="password-rule-lower">Letra minuscula</li>
-              <li id="password-rule-upper">Letra maiuscula</li>
-              <li id="password-rule-number">Numero</li>
-              <li id="password-rule-symbol">Simbolo</li>
+              <li id="password-rule-length">No mínimo 8 caracteres</li>
+              <li id="password-rule-lower">Letra minúscula</li>
+              <li id="password-rule-upper">Letra maiúscula</li>
+              <li id="password-rule-number">Número</li>
+              <li id="password-rule-symbol">Símbolo</li>
             </ul>
           </div>
           <button class="button primary" id="register-submit-button" type="submit" disabled>Criar conta</button>
@@ -88,12 +88,13 @@
 
         <div class="auth-separator" id="auth-separator"><span>ou</span></div>
         <button class="button ghost" id="google-login-button" type="button">Entrar com Google</button>
-        <a class="privacy-link" href="/privacy.html">Politica de privacidade</a>
+        <a class="privacy-link" href="/privacy.html">Política de privacidade</a>
       </div>
     </section>
 
     <div class="app-shell hidden" id="app-shell">
       <aside class="sidebar">
+        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Minimizar menu" title="Minimizar menu">☰</button>
         <div class="brand">
           <div class="brand-mark">F</div>
           <div>
@@ -102,12 +103,12 @@
           </div>
         </div>
 
-        <nav class="nav-stack" aria-label="Navegacao">
-          <button class="nav-item active" data-view="dashboard">Dashboard</button>
-          <button class="nav-item" data-view="launch">Lancamentos</button>
-          <button class="nav-item" data-view="charts">Graficos</button>
-          <button class="nav-item" data-view="profile">Perfil</button>
-          <button class="nav-item hidden" id="admin-nav-item" data-view="admin">Admin</button>
+        <nav class="nav-stack" aria-label="Navegação">
+          <button class="nav-item active" data-view="dashboard" data-short="D">Dashboard</button>
+          <button class="nav-item" data-view="launch" data-short="L">Lançamentos</button>
+          <button class="nav-item" data-view="charts" data-short="G">Gráficos</button>
+          <button class="nav-item" data-view="profile" data-short="P">Perfil</button>
+          <button class="nav-item hidden" id="admin-nav-item" data-view="admin" data-short="A">Admin</button>
         </nav>
 
         <div class="side-note">
@@ -116,7 +117,7 @@
         </div>
 
         <div class="user-box">
-          <span id="current-user">Usuario</span>
+          <span id="current-user">Usuário</span>
           <button class="button ghost compact" id="logout-button" type="button">Sair</button>
         </div>
       </aside>
@@ -124,12 +125,12 @@
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Visao mensal</p>
+            <p class="eyebrow">Visão mensal</p>
             <h1 id="page-title">Maio 2026</h1>
           </div>
           <div class="filters">
             <label>
-              Mes
+              Mês
               <select id="month-filter"></select>
             </label>
             <label>
@@ -147,7 +148,7 @@
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Mes atual</p>
+                  <p class="eyebrow">Mês atual</p>
                   <h2>Gastos por categoria</h2>
                 </div>
               </div>
@@ -169,16 +170,16 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Agenda</p>
-                <h2>Proximos lancamentos do mes</h2>
+                <h2>Próximos lançamentos do mês</h2>
               </div>
-              <button class="button compact" data-view-jump="launch" type="button">Novo lancamento</button>
+              <button class="button compact" data-view-jump="launch" type="button">Novo lançamento</button>
             </div>
             <div class="table-wrap compact-table">
               <table>
                 <thead>
                   <tr>
                     <th>Data</th>
-                    <th>Descricao</th>
+                    <th>Descrição</th>
                     <th>Categoria</th>
                     <th>Valor</th>
                     <th>Status</th>
@@ -196,7 +197,7 @@
               <div class="panel-heading">
                 <div>
                   <p class="eyebrow">Entrada rapida</p>
-                  <h2>Novo lancamento</h2>
+                  <h2>Novo lançamento</h2>
                 </div>
               </div>
 
@@ -206,7 +207,7 @@
                   <select id="entry-type" name="type"></select>
                 </label>
                 <label>
-                  Descricao
+                  Descrição
                   <input id="entry-name" name="name" type="text" placeholder="Ex: Mercado, Salario, Jogo" required />
                 </label>
                 <label>
@@ -232,7 +233,7 @@
                   Status
                   <select id="entry-status" name="status"></select>
                 </label>
-                <button class="button primary" type="submit">Lancar</button>
+                <button class="button primary" type="submit">Lançar</button>
               </form>
             </section>
 
@@ -240,7 +241,7 @@
               <div class="panel-heading">
                 <div>
                   <p class="eyebrow">Registros</p>
-                  <h2>Lancamentos do mes</h2>
+                  <h2>Lançamentos do mês</h2>
                 </div>
                 <button class="button ghost compact" id="edit-invested-button" type="button">Investido inicial</button>
               </div>
@@ -250,7 +251,7 @@
                     <tr>
                       <th>Data</th>
                       <th>Tipo</th>
-                      <th>Descricao</th>
+                      <th>Descrição</th>
                       <th>Categoria</th>
                       <th>Parcela</th>
                       <th>Valor</th>
@@ -271,7 +272,7 @@
               <div class="panel-heading">
                 <div>
                   <p class="eyebrow">Distribuicao</p>
-                  <h2>Categorias do mes</h2>
+                  <h2>Categorias do mês</h2>
                 </div>
               </div>
               <canvas id="category-large-chart" height="360"></canvas>
@@ -299,7 +300,7 @@
               </div>
               <form id="profile-form" class="profile-form">
                 <label>
-                  Usuario
+                  Usuário
                   <input id="profile-username" type="text" disabled />
                 </label>
                 <label>
@@ -313,7 +314,7 @@
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Seguranca</p>
+                  <p class="eyebrow">Segurança</p>
                   <h2>Senha</h2>
                 </div>
               </div>
@@ -330,6 +331,22 @@
                   Confirmar nova senha
                   <input id="password-confirm" type="password" autocomplete="new-password" required />
                 </label>
+                <div class="password-meter" aria-live="polite">
+                  <div class="password-bar">
+                    <span id="profile-password-strength-fill"></span>
+                  </div>
+                  <div class="password-strength-row">
+                    <strong id="profile-password-strength-label">Senha muito fraca</strong>
+                    <span id="profile-password-match-label">Confirme a senha</span>
+                  </div>
+                  <ul class="password-rules">
+                    <li id="profile-password-rule-length">No mínimo 8 caracteres</li>
+                    <li id="profile-password-rule-lower">Letra minúscula</li>
+                    <li id="profile-password-rule-upper">Letra maiúscula</li>
+                    <li id="profile-password-rule-number">Número</li>
+                    <li id="profile-password-rule-symbol">Símbolo</li>
+                  </ul>
+                </div>
                 <button class="button primary" type="submit">Alterar senha</button>
               </form>
             </section>
@@ -337,7 +354,7 @@
             <section class="panel profile-wide">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Organizacao</p>
+                  <p class="eyebrow">Organização</p>
                   <h2>Categorias</h2>
                 </div>
                 <button class="button compact" type="button" data-create-category="true">Nova categoria</button>
@@ -358,7 +375,7 @@
             </div>
 
             <div class="admin-tabs">
-              <button class="auth-tab active" type="button" data-admin-tab="users">Usuarios</button>
+              <button class="auth-tab active" type="button" data-admin-tab="users">Usuários</button>
               <button class="auth-tab" type="button" data-admin-tab="invites">Convites</button>
               <button class="auth-tab" type="button" data-admin-tab="logs">Logs</button>
               <button class="auth-tab" type="button" data-admin-tab="backup">Backup</button>
@@ -369,14 +386,14 @@
                 <table>
                   <thead>
                     <tr>
-                      <th>Usuario</th>
+                      <th>Usuário</th>
                       <th>Email</th>
                       <th>Nome</th>
                       <th>Perfil</th>
                       <th>Status</th>
                       <th>Convite</th>
                       <th>IA chat</th>
-                      <th>Acoes</th>
+                      <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody id="admin-user-rows"></tbody>
@@ -433,7 +450,7 @@
                 <div>
                   <p class="eyebrow">Backup manual</p>
                   <h2>Exportar dados do app</h2>
-                  <p>Baixa um JSON com usuarios, lancamentos, categorias, convites e logs recentes.</p>
+                  <p>Baixa um JSON com usuários, lançamentos, categorias, convites e logs recentes.</p>
                 </div>
                 <button class="button primary" id="backup-button" type="button">Baixar backup</button>
               </div>
