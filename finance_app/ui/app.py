@@ -26,7 +26,7 @@ class FinanceApp:
         today = date.today()
 
         self.root = tk.Tk()
-        self.root.title("Controle financeiro")
+        self.root.title("Finly Assistente financeiro")
         self.root.geometry("1160x720")
         self.root.minsize(980, 620)
 
@@ -79,7 +79,7 @@ class FinanceApp:
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.columnconfigure(1, weight=1)
 
-        ttk.Label(header, text="Controle financeiro 2026", style="Title.TLabel").grid(
+        ttk.Label(header, text="Finly Assistente financeiro", style="Title.TLabel").grid(
             row=0,
             column=0,
             sticky="w",

@@ -1,6 +1,6 @@
-# Finly - Visual Design Specifications
+# Finly Assistente financeiro - Visual Design Specifications
 
-Este documento define a identidade visual e os padrões de interface do Finly, um assistente financeiro dark-first de alta performance.
+Este documento define a identidade visual e os padrões de interface do Finly Assistente financeiro, um assistente financeiro dark-first de alta performance.
 
 ## 1. Core Visual Identity
 

@@ -169,8 +169,8 @@ export function App() {
         <div className="brand">
           <div className="brand-mark">F</div>
           <div>
-            <strong>Financeiro</strong>
-            <span>Desktop</span>
+            <strong>Finly</strong>
+            <span>Assistente financeiro</span>
           </div>
         </div>
         <nav className="nav-stack" aria-label="Navegacao">

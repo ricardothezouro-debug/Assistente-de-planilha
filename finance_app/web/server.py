@@ -221,7 +221,7 @@ class FinanceWebHandler(BaseHTTPRequestHandler):
 def run(port: int = PORT) -> None:
     FinanceWebHandler.service.setup(seed=True)
     server = ThreadingHTTPServer(("127.0.0.1", port), FinanceWebHandler)
-    print(f"Financeiro web rodando em http://127.0.0.1:{port}")
+    print(f"Finly Assistente financeiro rodando em http://127.0.0.1:{port}")
     server.serve_forever()
 
 
