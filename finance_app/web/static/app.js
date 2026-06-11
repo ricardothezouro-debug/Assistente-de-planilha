@@ -32,7 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function bindElements() {
   const ids = [
+    "page-kicker",
     "page-title",
+    "page-subtitle",
     "auth-shell",
     "app-shell",
     "login-tab",
@@ -639,12 +641,48 @@ function render() {
 
 function fillFilters() {
   const data = state.data;
-  els["page-title"].textContent = `${data.monthNames[state.month - 1]} ${state.year}`;
+  renderPageHeader();
   els["month-filter"].innerHTML = data.monthNames
     .map((name, index) => `<option value="${index + 1}">${name}</option>`)
     .join("");
   els["month-filter"].value = String(state.month);
   els["year-filter"].value = String(state.year);
+}
+
+function renderPageHeader() {
+  if (!state.data) return;
+  const monthTitle = `${state.data.monthNames[state.month - 1]} ${state.year}`;
+  const copy = {
+    dashboard: {
+      kicker: "Visão mensal",
+      title: monthTitle,
+      subtitle: "Acompanhe receitas, despesas e compromissos do mês.",
+    },
+    launch: {
+      kicker: "Registros",
+      title: "Lançamentos",
+      subtitle: `Gerencie entradas, parcelas e pagamentos de ${monthTitle}.`,
+    },
+    charts: {
+      kicker: "Analytics",
+      title: "Análise gráfica",
+      subtitle: "Visualize categorias, fluxo anual e equilíbrio financeiro.",
+    },
+    profile: {
+      kicker: "Conta",
+      title: "Perfil",
+      subtitle: "Gerencie suas informações pessoais, senha e categorias.",
+    },
+    admin: {
+      kicker: "Admin",
+      title: "Painel de controle",
+      subtitle: "Acompanhe usuários, convites, logs e backups.",
+    },
+  };
+  const current = copy[state.view] || copy.dashboard;
+  els["page-kicker"].textContent = current.kicker;
+  els["page-title"].textContent = current.title;
+  els["page-subtitle"].textContent = current.subtitle;
 }
 
 function fillFormOptions() {
@@ -703,18 +741,28 @@ function syncEntryTypeFields() {
 function renderSummary() {
   const summary = state.data.summary;
   const metrics = [
-    ["Recebido", summary.income.label, "good"],
-    ["A receber", summary.receivable_income.label, summary.receivable_income.cents > 0 ? "warn" : ""],
-    ["Despesas", summary.expenses.label, summary.expenses.cents > 0 ? "bad" : ""],
-    ["Em aberto", summary.open_expenses.label, summary.open_expenses.cents > 0 ? "warn" : ""],
-    ["Sobra", summary.balance.label, summary.balance.cents >= 0 ? "good" : "bad"],
-    ["Investido no mês", summary.invested_month.label, "good"],
-    ["Investido inicial", summary.initial_invested.label, ""],
-    ["Investido no ano", summary.invested_year.label, "good"],
-    ["Pagas", summary.paid_expenses.label, ""],
+    ["Recebido", summary.income.label, "good", "arrow_upward"],
+    ["A receber", summary.receivable_income.label, summary.receivable_income.cents > 0 ? "warn" : "", "pending_actions"],
+    ["Despesas", summary.expenses.label, summary.expenses.cents > 0 ? "bad" : "", "arrow_downward"],
+    ["Em aberto", summary.open_expenses.label, summary.open_expenses.cents > 0 ? "warn" : "", "schedule"],
+    ["Sobra", summary.balance.label, summary.balance.cents >= 0 ? "good" : "bad", "account_balance_wallet"],
+    ["Investido no mês", summary.invested_month.label, "good", "trending_up"],
+    ["Investido inicial", summary.initial_invested.label, "", "account_balance"],
+    ["Investido no ano", summary.invested_year.label, "good", "savings"],
+    ["Pagas", summary.paid_expenses.label, "", "task_alt"],
   ];
   els["summary-grid"].innerHTML = metrics
-    .map(([label, value, tone]) => `<article class="metric" data-tone="${tone}"><span>${label}</span><strong>${value}</strong></article>`)
+    .map(
+      ([label, value, tone, icon]) => `
+        <article class="metric" data-tone="${tone}">
+          <div class="metric-head">
+            <span class="metric-icon"><span class="material-symbols-outlined">${icon}</span></span>
+            <span>${label}</span>
+          </div>
+          <strong>${value}</strong>
+        </article>
+      `
+    )
     .join("");
 }
 
@@ -749,7 +797,10 @@ function renderOccurrenceRow(item) {
       <td>
         <div class="row-actions">
           <button class="button compact ghost" type="button" onclick="toggleOccurrence(${item.id})">Status</button>
-          <button class="button compact" type="button" onclick="openDeleteDialogById(${item.id})">Remover</button>
+          <button class="button compact" type="button" onclick="openDeleteDialogById(${item.id})">
+            <span class="material-symbols-outlined">delete</span>
+            <span>Remover</span>
+          </button>
         </div>
       </td>
     </tr>
@@ -1441,6 +1492,7 @@ function switchView(view) {
   document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
   document.getElementById(`${view}-view`).classList.add("active");
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+  renderPageHeader();
   if (view === "admin") {
     switchAdminTab(state.adminTab);
     loadAdminData();

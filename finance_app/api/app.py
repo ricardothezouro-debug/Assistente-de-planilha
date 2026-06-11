@@ -23,7 +23,7 @@ from finance_app.storage.database import get_database_path
 service = FinanceService(get_database_path())
 service.setup(seed=True)
 
-app = FastAPI(title="Financeiro API", version="0.1.0")
+app = FastAPI(title="Finly API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
