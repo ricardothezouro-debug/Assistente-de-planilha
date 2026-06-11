@@ -1315,7 +1315,7 @@ function drawCategoryChart(canvas, rows, large = false) {
   const ctx = setupCanvas(canvas);
   const { width, height } = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#151922";
+  ctx.fillStyle = "#0d1320";
   ctx.fillRect(0, 0, width, height);
 
   if (!rows.length) {
@@ -1323,7 +1323,7 @@ function drawCategoryChart(canvas, rows, large = false) {
     return;
   }
 
-  const colors = ["#2dd4bf", "#38bdf8", "#a78bfa", "#f59e0b", "#fb7185", "#34d399", "#e879f9"];
+  const colors = ["#2de2c3", "#38bdf8", "#22c55e", "#a78bfa", "#f59e0b", "#fb7185", "#e879f9"];
   const max = Math.max(...rows.map((row) => row.totalCents));
   const rowHeight = large ? 42 : 34;
   const labelWidth = large ? 180 : 140;
@@ -1333,14 +1333,17 @@ function drawCategoryChart(canvas, rows, large = false) {
   rows.slice(0, large ? 10 : 7).forEach((row, index) => {
     const y = 24 + index * rowHeight;
     const barWidth = Math.max(4, (row.totalCents / max) * barMax);
-    ctx.fillStyle = "#e5e7eb";
-    ctx.font = "700 13px Segoe UI";
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "700 13px Inter, Segoe UI, sans-serif";
     ctx.fillText(displayCategory(row.category), 18, y + 16);
-    ctx.fillStyle = colors[index % colors.length];
+    const gradient = ctx.createLinearGradient(labelWidth, y, labelWidth + barWidth, y);
+    gradient.addColorStop(0, colors[index % colors.length]);
+    gradient.addColorStop(1, index % 2 === 0 ? "#38bdf8" : colors[index % colors.length]);
+    ctx.fillStyle = gradient;
     roundedRect(ctx, labelWidth, y, barWidth, 20, 5);
     ctx.fill();
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "12px Segoe UI";
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "12px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "right";
     ctx.fillText(row.total, width - 18, y + 15);
     ctx.textAlign = "left";
@@ -1351,7 +1354,7 @@ function drawYearChart(canvas, rows, large = false) {
   const ctx = setupCanvas(canvas);
   const { width, height } = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#151922";
+  ctx.fillStyle = "#0d1320";
   ctx.fillRect(0, 0, width, height);
 
   const max = Math.max(1, ...rows.flatMap((row) => [row.incomeCents, row.expensesCents]));
@@ -1363,12 +1366,12 @@ function drawYearChart(canvas, rows, large = false) {
   const slot = (right - left) / 12;
   const bar = Math.max(6, Math.min(16, slot / 4));
 
-  ctx.font = "700 12px Segoe UI";
-  ctx.fillStyle = "#34d399";
+  ctx.font = "700 12px Inter, Segoe UI, sans-serif";
+  ctx.fillStyle = "#2de2c3";
   ctx.fillText("Recebido", left, 18);
   ctx.fillStyle = "#fb7185";
   ctx.fillText("Despesas", left + 86, 18);
-  ctx.strokeStyle = "#334155";
+  ctx.strokeStyle = "#1e293b";
   ctx.beginPath();
   ctx.moveTo(left, bottom);
   ctx.lineTo(right, bottom);
@@ -1378,14 +1381,20 @@ function drawYearChart(canvas, rows, large = false) {
     const x = left + index * slot + slot / 2;
     const incomeHeight = (row.incomeCents / max) * chartHeight;
     const expenseHeight = (row.expensesCents / max) * chartHeight;
-    ctx.fillStyle = "#34d399";
+    const incomeGradient = ctx.createLinearGradient(0, bottom - incomeHeight, 0, bottom);
+    incomeGradient.addColorStop(0, "#2de2c3");
+    incomeGradient.addColorStop(1, "#22c55e");
+    ctx.fillStyle = incomeGradient;
     roundedRect(ctx, x - bar - 1, bottom - incomeHeight, bar, incomeHeight, 4);
     ctx.fill();
-    ctx.fillStyle = "#fb7185";
+    const expenseGradient = ctx.createLinearGradient(0, bottom - expenseHeight, 0, bottom);
+    expenseGradient.addColorStop(0, "#fb7185");
+    expenseGradient.addColorStop(1, "#be123c");
+    ctx.fillStyle = expenseGradient;
     roundedRect(ctx, x + 1, bottom - expenseHeight, bar, expenseHeight, 4);
     ctx.fill();
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "11px Segoe UI";
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "11px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(row.monthName.slice(0, 3), x, bottom + 18);
     ctx.textAlign = "left";
@@ -1414,8 +1423,8 @@ function roundedRect(ctx, x, y, width, height, radius) {
 }
 
 function drawEmpty(ctx, width, height, label) {
-  ctx.fillStyle = "#cbd5e1";
-  ctx.font = "700 15px Segoe UI";
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "700 15px Inter, Segoe UI, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, width / 2, height / 2);
