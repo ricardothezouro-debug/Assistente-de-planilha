@@ -647,10 +647,14 @@ input.invalid {
   grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 16px;
   margin-bottom: 12px;
+  max-height: 760px;
+  overflow: hidden;
+  transition: max-height 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .summary-grid.is-compact {
   grid-template-columns: repeat(3, minmax(260px, 1fr));
+  max-height: 164px;
 }
 
 .metric {
@@ -662,12 +666,19 @@ input.invalid {
   padding: 20px;
   background: var(--surface);
   box-shadow: var(--shadow);
-  transition: border-color 140ms ease, transform 140ms ease;
+  opacity: 1;
+  transition: border-color 140ms ease, transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease;
 }
 
 .summary-grid.is-compact .metric {
   min-height: 136px;
   padding: 26px;
+}
+
+.summary-grid.is-compact .metric:not(.metric-primary) {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(18px) scale(0.985);
 }
 
 .metric:hover {
@@ -1151,6 +1162,10 @@ tbody tr:hover td {
   .summary-grid.is-compact {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
+
+  .summary-grid.is-compact {
+    max-height: 344px;
+  }
 }
 
 @media (max-width: 1080px) {
@@ -1229,6 +1244,10 @@ tbody tr:hover td {
   .summary-grid,
   .summary-grid.is-compact {
     grid-template-columns: 1fr;
+  }
+
+  .summary-grid.is-compact {
+    max-height: 524px;
   }
 
   .brand span {
