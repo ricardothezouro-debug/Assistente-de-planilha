@@ -759,14 +759,13 @@ function renderSummary() {
     { label: "Investido no ano", value: summary.invested_year.label, tone: "good", icon: "savings" },
     { label: "Pagas", value: summary.paid_expenses.label, tone: "", icon: "task_alt" },
   ];
-  const visibleMetrics = state.summaryExpanded ? metrics : metrics.filter((item) => item.primary);
   els["summary-grid"].classList.toggle("is-compact", !state.summaryExpanded);
   els["summary-toggle"].classList.toggle("expanded", state.summaryExpanded);
   els["summary-toggle"].setAttribute("aria-expanded", String(state.summaryExpanded));
   els["summary-toggle"].setAttribute("aria-label", state.summaryExpanded ? "Recolher indicadores" : "Expandir visão completa");
   els["summary-toggle"].title = state.summaryExpanded ? "Recolher indicadores" : "Expandir visão completa";
   els["summary-toggle"].innerHTML = `<span class="material-symbols-outlined">${state.summaryExpanded ? "remove" : "add"}</span>`;
-  els["summary-grid"].innerHTML = visibleMetrics
+  els["summary-grid"].innerHTML = metrics
     .map(
       ({ label, value, tone, icon, primary }) => `
         <article class="metric${primary ? " metric-primary" : ""}" data-tone="${tone}">
