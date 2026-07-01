@@ -1,47 +1,73 @@
-# Assistente de planilha
+# Finly Assistente Financeiro
 
-App local em Python para controle financeiro de 2026.
+Finly e um assistente financeiro dark-first para controle pessoal de receitas, despesas, parcelas, categorias, investimentos e administracao de usuarios por convite.
 
-## Como rodar
-
-No terminal do VS Code, com o ambiente virtual ativo:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python main.py
-```
-
-## Como rodar o front web
-
-No terminal do VS Code, com o ambiente virtual ativo:
-
-```powershell
-python web_main.py
-```
-
-Depois abra:
+App em producao:
 
 ```text
-http://127.0.0.1:8765
+https://assistente-de-planilha.pages.dev/
 ```
 
-## Como testar
+## Status
 
-```powershell
-python -m unittest discover
-```
+Versao atual: `v1.0.0`
 
-## Como publicar no Cloudflare Pages
+Esta versao entrega a base funcional do produto:
 
-Essa versao usa o front estatico em `finance_app/web/static`, Cloudflare Pages Functions em `functions/api` e Supabase como banco/autenticacao.
+- Login por email/senha e Google via Supabase Auth.
+- Criacao de conta somente por convite.
+- Usuarios com dados separados e categorias padrao.
+- Dashboard mensal com resumo compacto e expansivel.
+- Lancamentos fixos, variaveis, parcelados e recebidos.
+- Graficos financeiros.
+- Perfil com nome de exibicao e troca de senha.
+- Painel admin com usuarios, convites, logs e backup manual.
+- Politica de privacidade publica.
+- Deploy web em Cloudflare Pages + Supabase.
 
-Antes do primeiro deploy, abra o SQL Editor do Supabase e rode o arquivo:
+## Stack
+
+- Frontend: HTML, CSS e JavaScript sem framework.
+- Backend web: Cloudflare Pages Functions em TypeScript.
+- Banco e autenticacao: Supabase Auth + Supabase Postgres.
+- Hospedagem: Cloudflare Pages.
+- Validacao TypeScript: `tsc --noEmit`.
+- Versao local/desktop: Python, FastAPI, React e Tauri permanecem no repositorio para evolucao futura.
+
+## Estrutura principal
 
 ```text
-supabase/schema.sql
+finance_app/web/static/     Front web publicado
+functions/api/              API para Cloudflare Pages Functions
+supabase/schema.sql         Schema do banco Supabase
+desktop/                    Versao desktop Tauri
+finance_app/                Core Python/local
+scripts/                    Scripts auxiliares
+tests/                      Testes Python
 ```
 
-No Cloudflare Pages, use:
+## Variaveis necessarias
+
+Configure estas variaveis no Cloudflare Pages:
+
+```text
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-chave-publica
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
+LEGACY_OWNER_EMAIL=seu-email-legado
+ADMIN_EMAIL=email-admin
+```
+
+Notas:
+
+- `SUPABASE_ANON_KEY` e publica e pode ser usada pelo front.
+- `SUPABASE_SERVICE_ROLE_KEY` e secreta, deve ficar somente no Cloudflare e nunca deve ser exposta no JavaScript do navegador.
+- `ADMIN_EMAIL` define qual conta recebe acesso ao painel Admin.
+- `LEGACY_OWNER_EMAIL` preserva acesso/dados do primeiro usuario usado durante a migracao.
+
+## Deploy no Cloudflare Pages
+
+Configuracao recomendada:
 
 ```text
 Production branch: main
@@ -50,51 +76,85 @@ Build command: deixe vazio
 Build output directory: finance_app/web/static
 ```
 
-Configure estas variaveis de ambiente no Cloudflare:
+Fluxo de trabalho:
+
+1. Desenvolver e testar na branch `develop`.
+2. Fazer merge de `develop` para `main`.
+3. O Cloudflare Pages publica automaticamente a branch `main`.
+4. Conferir o app em `https://assistente-de-planilha.pages.dev/`.
+
+Antes do primeiro deploy, rode o schema no Supabase:
 
 ```text
-SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_ANON_KEY=sua-chave-publica
-SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
-LEGACY_OWNER_EMAIL=gamoxkun@gmail.com
-ADMIN_EMAIL=gamoxkun@gmail.com
+supabase/schema.sql
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` e secreta. Ela fica em Supabase > Project Settings > API Keys e deve ir apenas no Cloudflare, nunca no JavaScript do front.
-
-Depois do deploy, atualize em Supabase > Authentication > URL Configuration:
+No Supabase, configure Authentication > URL Configuration:
 
 ```text
-Site URL: https://seu-site.pages.dev
+Site URL:
+https://assistente-de-planilha.pages.dev/
+
 Redirect URLs:
-https://seu-site.pages.dev/
-https://seu-site.pages.dev/*
+https://assistente-de-planilha.pages.dev/
+https://assistente-de-planilha.pages.dev/*
 ```
 
-## Como rodar a versao desktop moderna
+## Observacoes sobre Supabase e Cloudflare
 
-Essa versao usa FastAPI no Python, React no visual e Tauri para abrir como app de PC.
+- O Cloudflare Pages hospeda o front estatico e executa a API serverless em `functions/api`.
+- O Supabase guarda usuarios, dados financeiros, categorias, convites, logs e configuracoes.
+- O app depende das variaveis de ambiente do Cloudflare para a API acessar o Supabase com seguranca.
+- Backups manuais podem ser baixados pelo painel Admin.
+- Criacao de novas contas deve passar por convite; o convite e validado pelo email autenticado.
 
-Pre-requisitos dessa versao:
+## Como rodar localmente
 
-- Node.js LTS
-- Rust
-- WebView2, que normalmente ja vem no Windows 10/11
+Instale as dependencias Node:
 
-Primeiro, instale as dependencias Python:
+```powershell
+npm install
+```
+
+Valide TypeScript:
+
+```powershell
+& "D:\Program Files\nodejs\node.exe" .\node_modules\typescript\bin\tsc --noEmit
+```
+
+Valide o JavaScript do front:
+
+```powershell
+node --check finance_app\web\static\app.js
+```
+
+Para a versao Python local:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python main.py
 ```
 
-Para desenvolvimento, voce pode subir a API manualmente:
+## Versao desktop
+
+A versao desktop usa FastAPI no Python, React no visual e Tauri para abrir como app de PC.
+
+Pre-requisitos:
+
+- Node.js LTS
+- Rust
+- WebView2 no Windows
+
+Rodar em desenvolvimento:
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 .\scripts\start_api.ps1
 ```
 
-Em outro terminal, rode a janela desktop:
+Em outro terminal:
 
 ```powershell
 cd desktop
@@ -102,64 +162,25 @@ npm install
 npm run desktop:dev
 ```
 
-Depois da primeira instalacao, tambem pode usar:
-
-```powershell
-.\scripts\start_desktop_front.ps1
-```
-
-Se precisar trocar o endereco da API, copie `desktop/.env.example` para `desktop/.env` e ajuste `VITE_API_URL`.
-
-## Como gerar o app desktop empacotado
-
-Para gerar apenas o sidecar da API Python:
-
-```powershell
-.\scripts\build_sidecar.ps1
-```
-
-Para gerar o aplicativo instalavel completo:
+Gerar pacote desktop:
 
 ```powershell
 cd desktop
 npm run desktop:build
 ```
 
-O app empacotado abre a API Python automaticamente por tras da janela. No Windows, o banco do app empacotado fica em:
+## Testes
 
-```text
-%LOCALAPPDATA%\Financeiro\data\financeiro.db
-```
-
-Se quiser rodar a janela desktop em modo desenvolvimento usando a API manual, sem iniciar o sidecar, use:
+Testes Python:
 
 ```powershell
-$env:FINANCEIRO_SKIP_SIDECAR = "1"
-cd desktop
-npm run desktop:dev
+python -m unittest discover
 ```
 
-## Uso rapido
+Checks usados antes da release:
 
-- No app web publicado, o login usa email/senha ou Google pelo Supabase.
-- A conta com email igual a `ADMIN_EMAIL` ganha a aba Admin automaticamente.
-- Novas contas podem ser criadas pela tela de login; cada usuario comeca com categorias padrao e planilha sem lancamentos.
-- Use o formulario da esquerda para lancar gastos, parcelas e recebidos.
-- Use Nova ao lado de Categoria para criar uma categoria personalizada.
-- Use Calendario ao lado de Data para escolher uma data clicando; ele abre no dia atual.
-- Clique duas vezes em um lancamento para alternar entre Pago e Nao pago.
-- Clique com o botao direito em uma fixa para remover todos os meses, deste mes em diante ou somente o mes atual.
-- Clique com o botao direito em uma parcela para remover todas as parcelas, desta parcela em diante ou somente esta parcela.
-- Clique com o botao direito em variaveis e recebidos para remover o lancamento.
-- Use a aba Graficos para visualizar gastos por categoria no mes e recebido versus despesas no ano.
-- Use Alterar investido inicial para corrigir o saldo investido que entra no total do ano.
-
-## Dados
-
-No app Python de desenvolvimento, o banco SQLite fica em:
-
-```text
-data/financeiro.db
+```powershell
+node --check finance_app\web\static\app.js
+& "D:\Program Files\nodejs\node.exe" .\node_modules\typescript\bin\tsc --noEmit
+git diff --check
 ```
-
-Se quiser recomecar do zero, feche o app e apague esse arquivo. Na proxima abertura, os dados iniciais serao recriados.
