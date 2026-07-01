@@ -12,6 +12,8 @@ const state = {
   inviteToken: "",
   invitePreview: null,
   sidebarCollapsed: false,
+  categoryChartType: "bars",
+  yearChartType: "bars",
 };
 
 const els = {};
@@ -156,6 +158,9 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-view-jump]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.viewJump));
+  });
+  document.querySelectorAll("[data-chart-kind]").forEach((button) => {
+    button.addEventListener("click", () => setChartType(button.dataset.chartKind, button.dataset.chartType));
   });
   els["refresh-button"].addEventListener("click", loadState);
   els["month-filter"].addEventListener("change", () => {
@@ -1354,15 +1359,34 @@ function openTextDialog(title, label, initialValue, onSave) {
   els["text-dialog-input"].focus();
 }
 
-function drawCharts() {
-  if (!state.data) return;
-  drawCategoryChart(els["category-chart"], state.data.categoryTotals);
-  drawYearChart(els["year-chart"], state.data.yearlyTotals);
-  drawCategoryChart(els["category-large-chart"], state.data.categoryTotals, true);
-  drawYearChart(els["year-large-chart"], state.data.yearlyTotals, true);
+function setChartType(kind, type) {
+  if (kind === "category") {
+    state.categoryChartType = type === "donut" ? "donut" : "bars";
+  }
+  if (kind === "year") {
+    state.yearChartType = type === "line" ? "line" : "bars";
+  }
+  renderChartTypeControls();
+  requestAnimationFrame(drawCharts);
 }
 
-function drawCategoryChart(canvas, rows, large = false) {
+function renderChartTypeControls() {
+  document.querySelectorAll("[data-chart-kind]").forEach((button) => {
+    const current = button.dataset.chartKind === "category" ? state.categoryChartType : state.yearChartType;
+    button.classList.toggle("active", button.dataset.chartType === current);
+  });
+}
+
+function drawCharts() {
+  if (!state.data) return;
+  renderChartTypeControls();
+  drawCategoryChart(els["category-chart"], state.data.categoryTotals);
+  drawYearChart(els["year-chart"], state.data.yearlyTotals);
+  drawCategoryChart(els["category-large-chart"], state.data.categoryTotals, true, state.categoryChartType);
+  drawYearChart(els["year-large-chart"], state.data.yearlyTotals, true, state.yearChartType);
+}
+
+function drawCategoryChart(canvas, rows, large = false, type = "bars") {
   const ctx = setupCanvas(canvas);
   const { width, height } = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, width, height);
@@ -1374,6 +1398,15 @@ function drawCategoryChart(canvas, rows, large = false) {
     return;
   }
 
+  if (type === "donut") {
+    drawCategoryDonutChart(ctx, width, height, rows, large);
+    return;
+  }
+
+  drawCategoryBars(ctx, width, rows, large);
+}
+
+function drawCategoryBars(ctx, width, rows, large = false) {
   const colors = ["#2de2c3", "#38bdf8", "#22c55e", "#a78bfa", "#f59e0b", "#fb7185", "#e879f9"];
   const max = Math.max(...rows.map((row) => row.totalCents));
   const rowHeight = large ? 42 : 34;
@@ -1401,7 +1434,65 @@ function drawCategoryChart(canvas, rows, large = false) {
   });
 }
 
-function drawYearChart(canvas, rows, large = false) {
+function drawCategoryDonutChart(ctx, width, height, rows, large = false) {
+  const colors = ["#2de2c3", "#38bdf8", "#22c55e", "#a78bfa", "#f59e0b", "#fb7185", "#e879f9", "#facc15"];
+  const visibleRows = withOtherCategory(rows, large ? 8 : 6);
+  const total = visibleRows.reduce((sum, row) => sum + row.totalCents, 0);
+  if (!total) {
+    drawEmpty(ctx, width, height, "Sem despesas neste mês");
+    return;
+  }
+
+  const compact = width < 640;
+  const radius = Math.min(compact ? width * 0.24 : width * 0.18, height * 0.34, 116);
+  const innerRadius = radius * 0.58;
+  const centerX = compact ? width / 2 : Math.max(150, width * 0.32);
+  const centerY = compact ? height * 0.38 : height / 2 + 8;
+  let start = -Math.PI / 2;
+
+  visibleRows.forEach((row, index) => {
+    const angle = (row.totalCents / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, start, start + angle);
+    ctx.closePath();
+    ctx.fillStyle = colors[index % colors.length];
+    ctx.fill();
+    start += angle;
+  });
+
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+  ctx.fillStyle = "#0d1320";
+  ctx.fill();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "700 12px Inter, Segoe UI, sans-serif";
+  ctx.fillText("Total", centerX, centerY - 8);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "800 18px Inter, Segoe UI, sans-serif";
+  ctx.fillText(formatCurrency(total), centerX, centerY + 18);
+  ctx.textAlign = "left";
+
+  const legendX = compact ? 24 : Math.min(width - 230, centerX + radius + 48);
+  let legendY = compact ? centerY + radius + 28 : centerY - radius + 6;
+  visibleRows.forEach((row, index) => {
+    if (legendY > height - 22) return;
+    ctx.fillStyle = colors[index % colors.length];
+    roundedRect(ctx, legendX, legendY, 12, 12, 4);
+    ctx.fill();
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "700 12px Inter, Segoe UI, sans-serif";
+    ctx.fillText(displayCategory(row.category), legendX + 22, legendY + 10);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "12px Inter, Segoe UI, sans-serif";
+    ctx.fillText(formatCurrency(row.totalCents), legendX + 150, legendY + 10);
+    legendY += 24;
+  });
+}
+
+function drawYearChart(canvas, rows, large = false, type = "bars") {
   const ctx = setupCanvas(canvas);
   const { width, height } = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, width, height);
@@ -1428,6 +1519,15 @@ function drawYearChart(canvas, rows, large = false) {
   ctx.lineTo(right, bottom);
   ctx.stroke();
 
+  if (type === "line") {
+    drawYearLineChart(ctx, rows, { left, right, top, bottom, chartHeight, slot, max });
+    return;
+  }
+
+  drawYearBars(ctx, rows, { left, bottom, chartHeight, slot, bar, max });
+}
+
+function drawYearBars(ctx, rows, { left, bottom, chartHeight, slot, bar, max }) {
   rows.forEach((row, index) => {
     const x = left + index * slot + slot / 2;
     const incomeHeight = (row.incomeCents / max) * chartHeight;
@@ -1450,6 +1550,81 @@ function drawYearChart(canvas, rows, large = false) {
     ctx.fillText(row.monthName.slice(0, 3), x, bottom + 18);
     ctx.textAlign = "left";
   });
+}
+
+function drawYearLineChart(ctx, rows, { left, right, top, bottom, chartHeight, slot, max }) {
+  const makePoint = (row, index, key) => ({
+    x: left + index * slot + slot / 2,
+    y: bottom - (row[key] / max) * chartHeight,
+  });
+  const incomePoints = rows.map((row, index) => makePoint(row, index, "incomeCents"));
+  const expensePoints = rows.map((row, index) => makePoint(row, index, "expensesCents"));
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.12)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 3; i += 1) {
+    const y = top + (chartHeight / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+  }
+
+  drawLineSeries(ctx, incomePoints, "#2de2c3", "#22c55e");
+  drawLineSeries(ctx, expensePoints, "#fb7185", "#be123c");
+
+  rows.forEach((row, index) => {
+    const x = left + index * slot + slot / 2;
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "11px Inter, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(row.monthName.slice(0, 3), x, bottom + 18);
+  });
+  ctx.textAlign = "left";
+}
+
+function drawLineSeries(ctx, points, colorStart, colorEnd) {
+  const gradient = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0);
+  gradient.addColorStop(0, colorStart);
+  gradient.addColorStop(1, colorEnd);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) {
+      ctx.moveTo(point.x, point.y);
+    } else {
+      ctx.lineTo(point.x, point.y);
+    }
+  });
+  ctx.stroke();
+
+  points.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#0d1320";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = colorStart;
+    ctx.stroke();
+  });
+}
+
+function withOtherCategory(rows, limit) {
+  if (rows.length <= limit) return rows;
+  const visible = rows.slice(0, limit - 1);
+  const rest = rows.slice(limit - 1);
+  const otherTotal = rest.reduce((sum, row) => sum + row.totalCents, 0);
+  return [...visible, { category: "Outros", totalCents: otherTotal, total: formatCurrency(otherTotal) }];
+}
+
+function formatCurrency(cents) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(cents / 100);
 }
 
 function setupCanvas(canvas) {

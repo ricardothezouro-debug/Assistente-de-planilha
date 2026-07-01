@@ -305,8 +305,12 @@
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Distribuicao</p>
+                  <p class="eyebrow">Distribuição</p>
                   <h2>Categorias do mês</h2>
+                </div>
+                <div class="segmented-control" aria-label="Tipo de gráfico de categorias">
+                  <button class="active" type="button" data-chart-kind="category" data-chart-type="bars">Barras</button>
+                  <button type="button" data-chart-kind="category" data-chart-type="donut">Circular</button>
                 </div>
               </div>
               <canvas id="category-large-chart" height="360"></canvas>
@@ -314,8 +318,12 @@
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Tendencia</p>
+                  <p class="eyebrow">Tendência</p>
                   <h2>Fluxo anual</h2>
+                </div>
+                <div class="segmented-control" aria-label="Tipo de gráfico anual">
+                  <button class="active" type="button" data-chart-kind="year" data-chart-type="bars">Barras</button>
+                  <button type="button" data-chart-kind="year" data-chart-type="line">Linha</button>
                 </div>
               </div>
               <canvas id="year-large-chart" height="360"></canvas>
