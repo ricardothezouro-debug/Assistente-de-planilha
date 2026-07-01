@@ -14,6 +14,7 @@ const state = {
   sidebarCollapsed: false,
   categoryChartType: "bars",
   yearChartType: "bars",
+  summaryExpanded: false,
 };
 
 const els = {};
@@ -75,6 +76,7 @@ function bindElements() {
     "year-filter",
     "refresh-button",
     "summary-grid",
+    "summary-toggle",
     "dashboard-rows",
     "occurrence-rows",
     "entry-form",
@@ -163,6 +165,7 @@ function bindEvents() {
     button.addEventListener("click", () => setChartType(button.dataset.chartKind, button.dataset.chartType));
   });
   els["refresh-button"].addEventListener("click", loadState);
+  els["summary-toggle"].addEventListener("click", toggleSummaryView);
   els["month-filter"].addEventListener("change", () => {
     state.month = Number(els["month-filter"].value);
     loadState();
@@ -746,20 +749,27 @@ function syncEntryTypeFields() {
 function renderSummary() {
   const summary = state.data.summary;
   const metrics = [
-    ["Recebido", summary.income.label, "good", "arrow_upward"],
-    ["A receber", summary.receivable_income.label, summary.receivable_income.cents > 0 ? "warn" : "", "pending_actions"],
-    ["Despesas", summary.expenses.label, summary.expenses.cents > 0 ? "bad" : "", "arrow_downward"],
-    ["Em aberto", summary.open_expenses.label, summary.open_expenses.cents > 0 ? "warn" : "", "schedule"],
-    ["Sobra", summary.balance.label, summary.balance.cents >= 0 ? "good" : "bad", "account_balance_wallet"],
-    ["Investido no mês", summary.invested_month.label, "good", "trending_up"],
-    ["Investido inicial", summary.initial_invested.label, "", "account_balance"],
-    ["Investido no ano", summary.invested_year.label, "good", "savings"],
-    ["Pagas", summary.paid_expenses.label, "", "task_alt"],
+    { label: "Recebido", value: summary.income.label, tone: "good", icon: "arrow_upward", primary: true },
+    { label: "A receber", value: summary.receivable_income.label, tone: summary.receivable_income.cents > 0 ? "warn" : "", icon: "pending_actions", primary: true },
+    { label: "Despesas", value: summary.expenses.label, tone: summary.expenses.cents > 0 ? "bad" : "", icon: "arrow_downward", primary: true },
+    { label: "Em aberto", value: summary.open_expenses.label, tone: summary.open_expenses.cents > 0 ? "warn" : "", icon: "schedule" },
+    { label: "Sobra", value: summary.balance.label, tone: summary.balance.cents >= 0 ? "good" : "bad", icon: "account_balance_wallet" },
+    { label: "Investido no mês", value: summary.invested_month.label, tone: "good", icon: "trending_up" },
+    { label: "Investido inicial", value: summary.initial_invested.label, tone: "", icon: "account_balance" },
+    { label: "Investido no ano", value: summary.invested_year.label, tone: "good", icon: "savings" },
+    { label: "Pagas", value: summary.paid_expenses.label, tone: "", icon: "task_alt" },
   ];
-  els["summary-grid"].innerHTML = metrics
+  const visibleMetrics = state.summaryExpanded ? metrics : metrics.filter((item) => item.primary);
+  els["summary-grid"].classList.toggle("is-compact", !state.summaryExpanded);
+  els["summary-toggle"].classList.toggle("expanded", state.summaryExpanded);
+  els["summary-toggle"].setAttribute("aria-expanded", String(state.summaryExpanded));
+  els["summary-toggle"].setAttribute("aria-label", state.summaryExpanded ? "Recolher indicadores" : "Expandir visão completa");
+  els["summary-toggle"].title = state.summaryExpanded ? "Recolher indicadores" : "Expandir visão completa";
+  els["summary-toggle"].innerHTML = `<span class="material-symbols-outlined">${state.summaryExpanded ? "remove" : "add"}</span>`;
+  els["summary-grid"].innerHTML = visibleMetrics
     .map(
-      ([label, value, tone, icon]) => `
-        <article class="metric" data-tone="${tone}">
+      ({ label, value, tone, icon, primary }) => `
+        <article class="metric${primary ? " metric-primary" : ""}" data-tone="${tone}">
           <div class="metric-head">
             <span class="metric-icon"><span class="material-symbols-outlined">${icon}</span></span>
             <span>${label}</span>
@@ -769,6 +779,11 @@ function renderSummary() {
       `
     )
     .join("");
+}
+
+function toggleSummaryView() {
+  state.summaryExpanded = !state.summaryExpanded;
+  renderSummary();
 }
 
 function renderTables() {
